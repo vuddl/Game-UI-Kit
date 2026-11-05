@@ -27,19 +27,39 @@ Do not overwrite an existing kit. Use a new `kit_name` or add to the existing on
 
 ## Commands
 
-The user can type these after `$game-ui-kit`, in any language, or say the same thing in words. If there is more than one kit in `ui_art/`, ask which, unless it is obvious from the conversation.
+The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or as `$game-ui-kit /<command>`, or in plain words. If `ui_art/` holds more than one kit, ask which, unless it is obvious.
 
 | Command | What to do |
 |---|---|
-| `/info` | Run the `info` script and report the status and next step in plain words. Change nothing. |
-| `/tone [auto\|game\|ref]` | Set where the tone comes from. `auto` is the default and you decide; `game` and `ref` force that source. With no argument, report the current tone and why. Replace the palette with `--force`, and say how many existing sprites no longer match, using `compare`. Do not regenerate them unless asked. |
-| `/wireframe [x]` | Propose layouts as gray boxes and the flow between screens, `x` options per screen, default 1. See Wireframes and flow. |
-| `/mockup [x] [keep\|rearrange]` | Build `x` mockups per screen from real sprites, default 1. See Mockup. |
-| `/choose <screen> v<n>` | Record the approved variant with the `choose` script. |
-| `/flow` | Draw the flow and build the clickable demo. See Wireframes and flow. |
-| `/export [screen]` | Export approved screens. See Export. Only ever run on this command or when the user says the screens are final. |
+| `info` | List these commands with one line each, then run the `info` script and report the kit's status and next step. Change nothing. |
+| `kit <path>` | Load an existing kit, following Existing kit. |
+| `wireframe create <description>` | Write layouts and draw wireframes and the flow. See Wireframes and flow. |
+| `wireframe adjust <description>` | Change the layouts as described and redraw. A confirmed wireframe or screen that changes stops being confirmed, so report which. |
+| `tone [auto\|game\|ref]` | With no argument, report the tone and why. `auto` is the default and you decide; `game` and `ref` force that source. Replace the palette with `--force`, and use `compare` to report how many sprites no longer match. Do not regenerate them unless asked. |
+| `asset <description>` | Generate the sprites still missing, following steps 2 to 4. **The only command that uses image quota, along with `replace`.** Estimate the images first. |
+| `replace <sprite> <description>` | Copy the old file to `style/replaced/`, generate one new sprite on its own sheet, then `slice --force`. Re-run `nineslice` and `states` for it, and re-render affected mockups. |
+| `mockup <screen> [x]` | Assemble that screen, with `x` variants, default 1. See Mockup. |
+| `mockup all [x]` | The same for every screen. |
+| `mockup adjust <description>` | Change the layouts as described and render again. |
+| `review <screen>` | View the mockup and critique hierarchy, legibility, thumb reach, tone and crowding against the layout guide, with concrete fixes. Change nothing. |
+| `device <screen>` | Run the `device` script, view `preview/devices/`, and report what breaks. |
+| `check` | Run `compare`, then `qa`, view the images, and report in plain words. |
+| `confirm wireframe` | Run `confirm <kit> wireframe`. |
+| `confirm <screen> [v<n>]` | Run `confirm <kit> <screen> [v<n>]`. |
+| `flow` | Run `flow`, view the board, and report the demo path and any broken links or dead ends. |
+| `spec [screen]` | Run `spec` and report the file paths. |
+| `export [screen]` | See Export. |
+| `export unity [screen]` | See Export. |
 
-None of these generate images, so they use no image quota. Report the number of mockups before and after rendering.
+`/choose` is the old name of `confirm`.
+
+**Order.** `kit` (optional), `wireframe create`, `wireframe adjust`, `confirm wireframe`, `asset`, `mockup`, `mockup adjust`, `confirm <screen>`, `flow`, `export`. Run `info` to see where a kit stands. If a step is missing, say what to do first rather than doing it yourself:
+
+- `asset` and `mockup` need a confirmed wireframe, unless the user says the kit's layouts are already final.
+- `export` handles only confirmed screens.
+- `mockup` never generates images. It draws a red box for a missing sprite and suggests `asset`, so quota is spent only when the user agrees.
+
+**Canvas.** Work at 1920 x 1080 unless the user says otherwise. Measure from a reference of another size, then convert with `resize-layout`, which scales without distortion and reports any empty margins. Tell the user about those margins.
 
 ## Choose the mode
 
@@ -209,15 +229,39 @@ A `needs_review` 9-slice means no stretchable band was found. Regenerate that el
 
 ## Export
 
-Run only on `/export` or when the user says the screens are final. If any screen has several variants and none is chosen, ask the user which, then record it:
+Run only on the `export` command or when the user says the screens are final.
+
+**1. Ask about backgrounds, every time.** If any screen has an image background, stop and ask: redraw it with shapes, or keep it as one image layer? Wait for the answer. Never assume, and never reuse an earlier answer. Ask once for the whole export, and let the user answer per screen. The `psd` script refuses to run without this choice, exiting with `NEEDS_BACKGROUND_CHOICE`.
+
+**2. Ask about other art, every time.** Only UI is redrawn by default: buttons, panels, bars, frames, tabs, icons. Characters, environments, props and other illustration need approval first. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`, then list them and ask: redraw them, or keep them as images? Keep them as images if the answer is no. The script finds likely art by name, and refuses with `NEEDS_ART_CHOICE` until `--art redraw|image` is given. Ask this in the same message as the background question.
+
+**3. Name layers.** Set each layout item's `name` to `function_description_color_screen`, where color and screen are optional: `icon_settings`, `button_normal_blue`, `bg_character_battle`. Without one, a name comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
+
+**4. Build.** Choose a variant first with `confirm` where needed.
 
 ```bash
-py -3 <skill>/scripts/uikit.py choose ui_art/<kit> <screen> v2
-```
-```bash
-py -3 <skill>/scripts/uikit.py export ui_art/<kit>
+py -3 <skill>/scripts/uikit.py psd ui_art/<kit> --background image --art image
 ```
 
-This writes `export/psd/<screen>.psd` and a flat `export/png/<screen>.png`. Each sprite and text is a named layer, items with the same `group` form a folder, and the reference is a hidden bottom layer. Use `group` in the layouts so folders follow screen regions. Tell the user that **text layers are pixels, not editable type**, and that stretched sprites are already drawn at their final size. Give `--force` only if the user asked to replace an export.
+This has Photoshop build `export/psd/<screen>.psd`, and opens only its own document if Photoshop is already running. It needs Photoshop on this machine. Otherwise it leaves `export/psd/<screen>.jsx`, which the user runs from File > Scripts > Browse on a machine that has it.
+
+- **Hierarchy:** anything visually inside a sprite is grouped under that sprite's group, as parent and child, at any depth.
+- **Shapes:** each UI sprite is redrawn as stacked vector shapes, and scored against its source. Those within the limit stay shapes; stretched ones keep their corners.
+- **Images:** a sprite too detailed to redraw accurately stays a smart object holding the full-size source, placed before scaling, and repeats share one smart object. A source that had to be enlarged is reported.
+- **Text:** real text layers. A font that is not installed falls back to Arial and is reported, so ask the user to install it.
+
+Improve important simple sprites by hand when worthwhile, using `--match` and `--force` with `vectorize` to retry, and view the check image at `export/psd/assets/<screen>_check.png`.
+
+**5. Report honestly** from `export/psd_report.json`: how many sprites are shapes, how many stayed images and why, live text count, missing fonts, and the difference from the mockup. Shapes are traced flat colors, so soft gradients become bands, and they are not a designer's hand-built vectors. Never call the file fully vector if anything stayed an image.
+
+**Flat PNG:** `export ui_art/<kit>` also writes `export/png/` with a quick flat layered PSD. Prefer `psd` for handoff.
+
+**Unity mapping,** for `export unity`:
+
+```bash
+py -3 <skill>/scripts/uikit.py unity ui_art/<kit>
+```
+
+This writes `export/unity/<screen>.json` with the same hierarchy, and each node's anchor, position relative to its parent, size, sprite, 9-slice, text, font and links. It does not build anything in Unity, and anchors are inferred from position, so say they may need adjusting.
 
 Finish with the kit path, element counts per family, the number of images generated, how the art compared with references, the number of mockups and their paths, any demo and export paths, and every remaining warning. State clearly that mockups and PSD files are not screens built in the engine.

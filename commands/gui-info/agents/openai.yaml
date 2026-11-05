@@ -1,0 +1,5 @@
+interface:
+  display_name: "GUI info"
+  short_description: "Show all game UI kit commands and the current kit's status"
+policy:
+  allow_implicit_invocation: false

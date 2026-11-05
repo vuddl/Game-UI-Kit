@@ -1,0 +1,5 @@
+interface:
+  display_name: "GUI export"
+  short_description: "Export confirmed game UI screens as editable PSD or a Unity "
+policy:
+  allow_implicit_invocation: false

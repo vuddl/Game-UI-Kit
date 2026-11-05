@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Turn UI sheets and loose sprites into a named kit with 9-slice data and checks.
 
-Commands: slice, import, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, flow, export,
-info, qa.
+Commands: slice, import, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, confirm, flow,
+export, psd, vectorize, unity, resize-layout, device, spec, info, qa.
 Run any of them with --help.
 Exit codes: 0 ok, 1 usage or input error, 2 result needs a fix (see output).
 """
@@ -11,12 +11,14 @@ from __future__ import annotations
 import argparse
 import base64
 import fnmatch
+import hashlib
 import html
 import io
 import json
 import re
 import shutil
 import struct
+import subprocess
 import sys
 import unicodedata
 import urllib.request
@@ -24,7 +26,7 @@ from pathlib import Path
 
 try:
     import numpy as np
-    from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
+    from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont
 except ImportError as exc:
     sys.exit(f"Missing dependency: {exc.name}. Install with: py -3 -m pip install pillow numpy")
 
@@ -651,11 +653,7 @@ def stretch_band(image: np.ndarray, axis: int, tolerance: float, min_share: floa
     return best[1]
 
 
-def render_nine_slice(img: Image.Image, border: dict, width: int, height: int,
-                      border_scale: float | None = None) -> Image.Image:
-    w, h = img.size
-    xs = [0, border["left"], w - border["right"], w]
-    ys = [0, border["top"], h - border["bottom"], h]
+def nine_scale(border: dict, w: int, h: int, width: int, height: int, border_scale: float | None) -> float:
     across = border["left"] + border["right"]
     down = border["top"] + border["bottom"]
     # A sprite cut on one axis scales normally on the other, so its end caps must follow that
@@ -669,7 +667,15 @@ def render_nine_slice(img: Image.Image, border: dict, width: int, height: int,
     if border_scale is not None:
         scale = scale * border_scale if not (across and down) else border_scale
     # Shrink corners rather than let them overlap when the target is smaller than the borders.
-    scale = min(scale, width / across if across else scale, height / down if down else scale)
+    return min(scale, width / across if across else scale, height / down if down else scale)
+
+
+def render_nine_slice(img: Image.Image, border: dict, width: int, height: int,
+                      border_scale: float | None = None) -> Image.Image:
+    w, h = img.size
+    xs = [0, border["left"], w - border["right"], w]
+    ys = [0, border["top"], h - border["bottom"], h]
+    scale = nine_scale(border, w, h, width, height, border_scale)
     left, right = round(border["left"] * scale), round(border["right"] * scale)
     top, bottom = round(border["top"] * scale), round(border["bottom"] * scale)
     tx = [0, left, width - right, width]
@@ -765,7 +771,7 @@ def cmd_states(args) -> int:
 
 LAYOUT_KEYS = {"size", "title", "background", "reference", "font", "items"}
 ITEM_KEYS = {"element", "text", "x", "y", "w", "h", "anchor", "mode", "border_scale", "opacity",
-             "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label"}
+             "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label", "name", "role"}
 ANCHORS = {"top_left": (0, 0), "top": (0.5, 0), "top_right": (1, 0), "left": (0, 0.5), "center": (0.5, 0.5),
            "right": (1, 0.5), "bottom_left": (0, 1), "bottom": (0.5, 1), "bottom_right": (1, 1)}
 VARIANT_RE = re.compile(r"^(.+)__v(\d+)$")
@@ -783,7 +789,7 @@ def layout_sort_key(path: Path):
 
 
 def layout_paths(kit: Path, screen: str | None = None) -> list[Path]:
-    paths = [p for p in (kit / "mockups").glob("*.json") if p.stem != "chosen"]
+    paths = [p for p in (kit / "mockups").glob("*.json") if p.stem not in ("chosen", "confirmed")]
     if screen:
         paths = [p for p in paths if p.stem == screen or screen_of(p.stem) == screen]
     return sorted(paths, key=layout_sort_key)
@@ -866,6 +872,8 @@ def read_layout(path: Path) -> dict:
             bad(f'{where}: "fill" must be from 0 to 1 and needs "w" and "h"')
         if item.get("anchor", "top_left") not in ANCHORS:
             bad(f'{where}: anchor must be one of {sorted(ANCHORS)}')
+        if item.get("role", "ui") not in ("ui", "art"):
+            bad(f'{where}: role must be ui or art')
         if item.get("mode", "auto") not in ("auto", "nine", "fit", "stretch"):
             bad(f'{where}: mode must be auto, nine, fit or stretch')
         if "text_color" in item:
@@ -1001,6 +1009,8 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
     warnings, missing, used, boxes, layers = [], [], [], [], []
     warn = warnings.append
     font_path, font_source = resolve_font(kit, layout)
+    if size != DEFAULT_CANVAS:
+        warn(f"canvas is {width}x{height}, the default is {DEFAULT_CANVAS[0]}x{DEFAULT_CANVAS[1]}")
     if font_source == "system" and any("text" in i for i in layout["items"]):
         warn("no font in the kit, so a system font was used")
 
@@ -1460,7 +1470,7 @@ def write_psd(path: Path, size: tuple[int, int], layers: list[dict], merged: Ima
 def cmd_export(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
-    picked = selected_layouts(kit, args.screen)
+    picked = export_targets(kit, args)
     built = {}
     for screen, path in picked.items():
         layout = read_layout(path)
@@ -1523,18 +1533,26 @@ def cmd_info(args) -> int:
     for path in layout_paths(kit):
         screens.setdefault(screen_of(path.stem), []).append(path.stem)
     undecided = [s for s, stems in screens.items() if len(stems) > 1 and s not in chosen]
+    good, stale = confirmed_screens(kit)
+    wire_ok, wire_changed = wireframe_confirmed(kit) if screens else (False, [])
     exports = sorted(p.stem for p in (kit / "export" / "psd").glob("*.psd"))
 
-    if not elements:
-        step = "Create or import the art."
+    if not elements and not screens:
+        step = "Load a kit, or start with wireframe create."
+    elif not elements:
+        step = "Confirm the wireframe, then create art with asset."
     elif not screens:
-        step = "Propose layouts: /wireframe, then /mockup."
+        step = "Propose layouts with wireframe create."
+    elif not wire_ok:
+        step = "Review the wireframes, adjust them, then confirm wireframe."
     elif undecided:
-        step = f"Choose a variant for {undecided} with /choose, then /export."
+        step = f"Choose a variant for {undecided} with confirm <screen> v<n>."
     elif qa is None or qa["errors"]:
-        step = "Run QA and fix any errors."
+        step = "Run check and fix any errors."
+    elif len(good) < len(screens):
+        step = f"Confirm the remaining screens: {sorted(set(screens) - set(good))}."
     elif len(exports) < len(screens):
-        step = "When the screens are approved, run /export."
+        step = "Run export."
     else:
         step = "Everything is exported."
     info = {
@@ -1551,11 +1569,901 @@ def cmd_info(args) -> int:
         "compare": {"review": len(compare["review"])} if compare else "not run",
         "tone": read_palette(kit) or "not locked",
         "fonts": [p.name for p in kit_fonts(kit)] or "none, system font in use",
+        "wireframe_confirmed": wire_ok, "wireframe_changed": wire_changed,
+        "confirmed_screens": sorted(good), "changed_since_confirmed": sorted(stale),
         "flow_demo": (kit / "demo" / "index.html").exists(),
         "exported_psd": exports,
         "next_step": step,
     }
     print(json.dumps(info, indent=2, ensure_ascii=True))
+    return 0
+
+
+FAMILY_FUNCTION = {"buttons": "button", "icons": "icon", "hud": "icon", "menu": "icon", "navigation": "icon",
+                   "currency": "icon", "shop": "icon", "controls": "button", "panels": "panel", "bars": "bar",
+                   "frames": "frame", "backdrops": "bg", "backgrounds": "bg"}
+PSD_NAME_RE = re.compile(r"^[a-z]+(_[a-z0-9]+)+$")
+DEFAULT_CANVAS = (1920, 1080)
+ART_NAME_RE = re.compile(r"(^|[/_])(characters?|char|avatars?|heroes|hero|npcs?|enem(y|ies)|monsters?|pets?|mounts?|"
+                         r"bg|backgrounds?|backdrops?|env|environments?|worlds?|scenes?|terrain|props?|illustrations?)($|[/_])")
+
+
+def is_art(name: str, item: dict) -> bool:
+    """UI is redrawn by default. Characters, backgrounds and environments need the user's approval."""
+    role = item.get("role")
+    return role == "art" if role else bool(ART_NAME_RE.search(name))
+
+
+def slug(text: str) -> str:
+    return normalize_name(Path(str(text))).replace("/", "_") or "item"
+
+
+def element_layer_name(name: str) -> str:
+    """Build a (function)_(description) name from an element path."""
+    family, _, leaf = name.rpartition("/")
+    function = FAMILY_FUNCTION.get(family.split("/")[-1], family.split("/")[-1].rstrip("s") or "item")
+    leaf = slug(leaf)
+    return leaf if leaf.startswith(f"{function}_") else f"{function}_{leaf}"
+
+
+def trace_contours(mask: np.ndarray) -> list[list[tuple[int, int]]]:
+    """Follow pixel-edge boundaries of a mask into closed loops, in image coordinates."""
+    padded = np.pad(mask, 1)
+    h, w = mask.shape
+    links: dict[tuple[int, int], list[tuple[int, int]]] = {}
+
+    def add(ys, xs, a, b):
+        for y, x in zip(ys.tolist(), xs.tolist()):
+            links.setdefault((x + a[0], y + a[1]), []).append((x + b[0], y + b[1]))
+
+    core = padded[1:-1, 1:-1]
+    add(*np.nonzero(core & ~padded[:-2, 1:-1]), (0, 0), (1, 0))
+    add(*np.nonzero(core & ~padded[1:-1, 2:]), (1, 0), (1, 1))
+    add(*np.nonzero(core & ~padded[2:, 1:-1]), (1, 1), (0, 1))
+    add(*np.nonzero(core & ~padded[1:-1, :-2]), (0, 1), (0, 0))
+    loops = []
+    while links:
+        start = next(iter(links))
+        loop, point = [start], links[start].pop()
+        if not links[start]:
+            del links[start]
+        while point != start:
+            loop.append(point)
+            options = links[point]
+            following = options.pop()
+            if not options:
+                del links[point]
+            point = following
+        loops.append(loop)
+    return loops
+
+
+def simplify(points: list[tuple[float, float]], epsilon: float) -> list[tuple[float, float]]:
+    """Ramer-Douglas-Peucker on a closed loop, keeping two far-apart anchors."""
+    if len(points) < 8:
+        return points
+    array = np.array(points, dtype=float)
+    far = int(((array - array[0]) ** 2).sum(axis=1).argmax())
+
+    def reduce(section: np.ndarray) -> list[int]:
+        keep, stack = [0, len(section) - 1], [(0, len(section) - 1)]
+        while stack:
+            a, b = stack.pop()
+            if b <= a + 1:
+                continue
+            line = section[b] - section[a]
+            length = max(1e-9, float(np.hypot(*line)))
+            middle = section[a + 1:b] - section[a]
+            distance = np.abs(line[0] * middle[:, 1] - line[1] * middle[:, 0]) / length
+            index = int(distance.argmax())
+            if distance[index] > epsilon:
+                index += a + 1
+                keep.append(index)
+                stack += [(a, index), (index, b)]
+        return sorted(set(keep))
+
+    first = array[: far + 1]
+    second = np.concatenate([array[far:], array[:1]])
+    return [tuple(first[i]) for i in reduce(first)[:-1]] + [tuple(second[i]) for i in reduce(second)[:-1]]
+
+
+def polygon_area(points) -> float:
+    array = np.array(points, dtype=float)
+    return abs(float(np.dot(array[:, 0], np.roll(array[:, 1], 1)) - np.dot(array[:, 1], np.roll(array[:, 0], 1)))) / 2
+
+
+def raster_shapes(shapes: list[dict], size: tuple[int, int], factor: int = 3) -> np.ndarray:
+    """Draw traced shapes with even-odd fill, to score them against the source sprite."""
+    w, h = size
+    canvas = Image.new("RGBA", (w * factor, h * factor), (0, 0, 0, 0))
+    for shape in shapes:
+        mask = Image.new("1", canvas.size, 0)
+        for subpath in shape["subpaths"]:
+            piece = Image.new("1", canvas.size, 0)
+            ImageDraw.Draw(piece).polygon([(x * factor, y * factor) for x, y in subpath], fill=1)
+            mask = ImageChops.logical_xor(mask, piece)
+        canvas.paste(tuple(shape["color"]) + (255,), (0, 0), mask)
+    return np.asarray(canvas.resize((w, h), Image.BOX)).astype(float)
+
+
+def score_shapes(source: np.ndarray, drawn: np.ndarray) -> float:
+    """Mean perceptual difference over visible pixels. Below about 6 is hard to notice."""
+    visible = (source[..., 3] > 16) | (drawn[..., 3] > 16)
+    if not visible.any():
+        return 0.0
+    def on_gray(p):
+        return p[..., :3] * (p[..., 3:] / 255) + 128 * (1 - p[..., 3:] / 255)
+    a = rgb_to_lab(on_gray(source)[visible])
+    b = rgb_to_lab(on_gray(drawn)[visible])
+    return float(np.sqrt(((a - b) ** 2).sum(axis=1)).mean())
+
+
+def trace_sprite(path: Path, max_layers: int, max_points: int, limit: int = 384) -> tuple[list[dict], tuple[int, int], float, tuple[int, int]]:
+    """Trace a sprite into stacked flat-color shapes, with more colors until it scores well."""
+    img = Image.open(path).convert("RGBA")
+    native = img.size
+    if max(img.size) > limit:
+        img.thumbnail((limit, limit), Image.LANCZOS)
+    size = img.size
+    source = np.asarray(img).astype(float)
+    solid = source[..., 3] >= 128
+    if not solid.any():
+        return [], size, 0.0, native
+    scale = native[0] / size[0]
+    best = None
+    for colors in (6, 10, 16, 24):
+        colors = min(colors, max_layers)
+        strip = Image.fromarray(source[..., :3].astype(np.uint8), "RGB")
+        quantized = strip.quantize(colors=colors, method=Image.FASTOCTREE)
+        table = np.array(quantized.getpalette()[: colors * 3]).reshape(-1, 3)
+        index = np.asarray(quantized)
+        counts = np.bincount(index[solid], minlength=len(table))
+        order = [int(i) for i in np.argsort(-counts) if counts[i] > 0]
+        rank = np.full(len(table), len(order), dtype=int)
+        for r, i in enumerate(order):
+            rank[i] = r
+        ranks = rank[index]
+        shapes, points = [], 0
+        for r, color_index in enumerate(order):
+            mask = solid & (ranks >= r)
+            loops = [simplify(loop, 0.8) for loop in trace_contours(mask)]
+            loops = [loop for loop in loops if len(loop) >= 3 and polygon_area(loop) >= 3]
+            if loops:
+                shapes.append({"color": [int(c) for c in table[color_index]], "subpaths": loops})
+                points += sum(len(loop) for loop in loops)
+        score = score_shapes(source, raster_shapes(shapes, size))
+        candidate = (shapes, score, points)
+        if points <= max_points and (best is None or score < best[1]):
+            best = candidate
+        if colors == max_layers or (best and score <= 5):
+            break
+    if best is None:
+        return [], size, 99.0, native
+    shapes = [{"color": s["color"], "subpaths": [[[round(x * scale, 2), round(y * scale, 2)] for x, y in loop] for loop in s["subpaths"]]} for s in best[0]]
+    return shapes, native, best[1], native
+
+
+def vector_path(kit: Path, name: str) -> Path:
+    return kit / "style" / "vector" / f"{name}.json"
+
+
+def vectorize_element(kit: Path, name: str, entry: dict, args) -> dict:
+    out = vector_path(kit, name)
+    if out.exists() and not args.force:
+        return json.loads(out.read_text(encoding="utf-8"))
+    shapes, size, score, native = trace_sprite(kit / entry["file"], args.max_layers, args.max_points)
+    kind = "vector" if shapes and score <= args.max_difference else "raster"
+    spec = {"element": name, "kind": kind, "score": round(score, 2), "size": list(native), "shapes": shapes if kind == "vector" else []}
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(spec), encoding="utf-8")
+    return spec
+
+
+def cmd_vectorize(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    names = selected(manifest, args.match) if args.match else list(manifest["elements"])
+    if not names:
+        die("NO_MATCH", "no elements to vectorize", 1)
+    tally = {"vector": 0, "raster": 0}
+    for name in names:
+        spec = vectorize_element(kit, name, manifest["elements"][name], args)
+        tally[spec["kind"]] += 1
+        print(f"{name}: {spec['kind']}, difference {spec['score']}, {len(spec['shapes'])} shapes")
+    print(f"{tally['vector']} redrawn as shapes, {tally['raster']} kept as images.")
+    return 0
+
+
+def nine_mapper(border: dict, native: tuple[int, int], box: tuple[int, int, int, int], border_scale):
+    x0, y0, x1, y1 = box
+    width, height = x1 - x0, y1 - y0
+    w, h = native
+    scale = nine_scale(border, w, h, width, height, border_scale)
+    left, right, top, bottom = (border[k] * scale for k in ("left", "right", "top", "bottom"))
+
+    def axis(value, size, low, high, target_low, target_high, target):
+        if value <= low:
+            return value * (target_low / low) if low else 0.0
+        if value >= size - high:
+            return target - (size - value) * (target_high / high) if high else float(target)
+        middle = size - low - high
+        return target_low + (value - low) * ((target - target_low - target_high) / middle)
+
+    return lambda px, py: (x0 + axis(px, w, border["left"], border["right"], left, right, width),
+                           y0 + axis(py, h, border["top"], border["bottom"], top, bottom, height))
+
+
+def item_mapper(item: dict, entry: dict, box, native):
+    """Map sprite coordinates to the screen, the same way the mockup draws that sprite."""
+    x0, y0, x1, y1 = box
+    width, height = x1 - x0, y1 - y0
+    nine = entry.get("nine_slice") or {}
+    has_box = "w" in item and "h" in item
+    mode = item.get("mode", "auto")
+    if has_box and mode in ("auto", "nine") and nine.get("status") == "suggested":
+        return nine_mapper(nine, native, box, item.get("border_scale")), "nine"
+    if has_box and mode != "stretch":
+        scale = min(width / native[0], height / native[1])
+        ox = x0 + (width - native[0] * scale) / 2
+        oy = y0 + (height - native[1] * scale) / 2
+        return (lambda px, py: (ox + px * scale, oy + py * scale)), "fit"
+    sx, sy = width / native[0], height / native[1]
+    return (lambda px, py: (x0 + px * sx, y0 + py * sy)), "stretch"
+
+
+def find_container(node: dict, group: str | None, placed: list[tuple[dict, str | None]]) -> dict | None:
+    """Find the smallest earlier sprite that visually holds this node, which becomes its parent."""
+    x0, y0, x1, y1 = node["box"]
+    area = max(1, (x1 - x0) * (y1 - y0))
+    best, best_area = None, None
+    for other, other_group in placed:
+        if not other["entry"] or other_group != group:
+            continue
+        a0, b0, a1, b1 = other["box"]
+        other_area = (a1 - a0) * (b1 - b0)
+        overlap = max(0, min(x1, a1) - max(x0, a0)) * max(0, min(y1, b1) - max(y0, b0))
+        if overlap >= area * 0.9 and other_area > area * 1.1 and (best is None or other_area < best_area):
+            best, best_area = other, other_area
+    return best
+
+
+def build_tree(kit: Path, layout: dict, manifest: dict, screen: str, background: str | None, args=None, assets: Path | None = None):
+    """Turn a layout into a tree of named nodes for the PSD and Unity exports."""
+    size = tuple(layout["size"])
+    used: dict[str, int] = {}
+    nodes, notes = [], []
+
+    def unique(name: str) -> str:
+        used[name] = used.get(name, 0) + 1
+        return name if used[name] == 1 else f"{name}_{used[name]}"
+
+    folders: dict[str, dict] = {}
+    placed: list[tuple[dict, str | None]] = []
+    current = None
+    for item in layout["items"]:
+        name = item.get("element")
+        entry = manifest["elements"].get(name) if name else None
+        if entry:
+            item = prepare_fill(item, entry, notes.append)
+            native = (entry["width"], entry["height"])
+            box = item_box(item, native, size) if not ("w" in item and "h" in item) else item_box(item, None, size)
+        else:
+            box = item_box(item, None, size)
+        label = item.get("name") or (element_layer_name(name) if name else f"text_{slug(item.get('text', ''))}")
+        if not PSD_NAME_RE.match(label):
+            notes.append(f"{label}: does not follow function_description_color_screen")
+        node = {"name": unique(label), "box": list(box), "item": item, "element": name if entry else None,
+                "entry": entry, "children": []}
+        group = item.get("group")
+        container = find_container(node, group, placed)
+        placed.append((node, group))
+        if container:
+            container["children"].append(node)
+            current = group
+            continue
+        if group:
+            if group != current or group not in folders:
+                folder = {"name": unique(group), "folder": True, "children": []}
+                folders[group] = folder
+                nodes.append(folder)
+            folders[group]["children"].append(node)
+        else:
+            nodes.append(node)
+        current = group
+    return nodes, notes
+
+
+def psd_font(font_path: str | None) -> str:
+    """Read a font's PostScript name, which is what Photoshop asks for."""
+    if not font_path:
+        return "ArialMT"
+    try:
+        data = Path(font_path).read_bytes()
+        tables = struct.unpack(">H", data[4:6])[0]
+        for i in range(tables):
+            tag, _, offset, _ = struct.unpack(">4sIII", data[12 + i * 16:28 + i * 16])
+            if tag == b"name":
+                _, count, start = struct.unpack(">HHH", data[offset:offset + 6])
+                for j in range(count):
+                    platform, _, _, name_id, length, where = struct.unpack(">6H", data[offset + 6 + j * 12:offset + 18 + j * 12])
+                    if name_id == 6:
+                        raw = data[offset + start + where:offset + start + where + length]
+                        return raw.decode("utf-16-be" if platform in (0, 3) else "latin-1")
+    except (OSError, struct.error, UnicodeDecodeError):
+        pass
+    return "ArialMT"
+
+
+def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, assets: Path) -> list[dict]:
+    """Describe one node as Photoshop drawing steps, in bottom-to-top order."""
+    if node.get("folder"):
+        children = []
+        for child in node["children"]:
+            children += psd_ops(kit, child, layout, font, args, stats, assets)
+        return [{"op": "group", "name": node["name"], "children": children}]
+    item, entry = node["item"], node["entry"]
+    box = node["box"]
+    children = []
+    opacity = round(item.get("opacity", 1) * 100, 1)
+    if entry:
+        native = (entry["width"], entry["height"])
+        mapper, mode = item_mapper(item, entry, box, native)
+        keep_image = is_art(node["element"], item) and args.art != "redraw"
+        spec = {"kind": "raster"} if keep_image else vectorize_element(kit, node["element"], entry, args)
+        if keep_image:
+            stats["art_as_images"].append(node["name"])
+        if spec["kind"] == "vector":
+            stats["vector"].append(node["name"])
+            for i, shape in enumerate(spec["shapes"]):
+                subpaths = [[[round(v, 2) for v in mapper(*point)] for point in loop] for loop in shape["subpaths"]]
+                children.append({"op": "path", "name": f"{node['name']}_shape{i + 1}", "color": shape["color"],
+                                 "subpaths": subpaths, "opacity": opacity})
+        else:
+            stats["image"].append(node["name"])
+            source = kit / entry["file"]
+            if mode == "nine":
+                # A smart object cannot 9-slice, so the stretched result is embedded at final size.
+                image = Image.open(source).convert("RGBA")
+                rendered = render_nine_slice(image, entry["nine_slice"], box[2] - box[0], box[3] - box[1], item.get("border_scale"))
+                source = assets / f"{node['name']}.png"
+                rendered.save(source)
+                place = list(box)
+            else:
+                x0, y0, x1, y1 = box
+                if mode == "fit":
+                    scale = min((x1 - x0) / native[0], (y1 - y0) / native[1])
+                    w, h = native[0] * scale, native[1] * scale
+                    place = [x0 + ((x1 - x0) - w) / 2, y0 + ((y1 - y0) - h) / 2, x0 + ((x1 - x0) + w) / 2, y0 + ((y1 - y0) + h) / 2]
+                else:
+                    scale = (x1 - x0) / native[0]
+                    place = list(box)
+                if scale > 1.02:
+                    stats["upscaled"].append(f"{node['name']}: source enlarged {scale:.1f}x, will look soft")
+            children.append({"op": "smart", "name": f"{node['name']}_image", "file": source.resolve().as_posix(),
+                             "box": [round(v, 2) for v in place], "opacity": opacity})
+    if "text" in item:
+        center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]
+        color = list(ImageColor.getrgb(item.get("text_color", "#FFFFFF"))[:3])
+        size = round(item.get("text_size", max(12, (box[3] - box[1]) * 0.45)))
+        children.append({"op": "text", "name": f"text_{slug(item['text'])}", "text": str(item["text"]), "font": font,
+                         "size": size, "color": color, "center": center, "max_width": (box[2] - box[0]) * 0.9,
+                         "stroke": round(item.get("text_stroke", 0))})
+        stats["text"] += 1
+    for child in node.get("children", []):
+        children += psd_ops(kit, child, layout, font, args, stats, assets)
+    if len(children) == 1 and not entry:
+        children[0]["name"] = node["name"]
+        return children
+    return [{"op": "group", "name": node["name"], "children": children}]
+
+
+PSD_JSX = r"""#target photoshop
+var PLAN = __PLAN__;
+function s(n) { return stringIDToTypeID(n); }
+function rgb(c) { var d = new ActionDescriptor(); d.putDouble(s("red"), c[0]); d.putDouble(s("green"), c[1]); d.putDouble(s("blue"), c[2]); return d; }
+var missingFonts = {}, placed = {}, doc, kinds = {shape: 0, text: 0, smart: 0, group: 0};
+function hasFont(n) { try { app.fonts.getByName(n); return true; } catch (e) { return false; } }
+function solidLayer(color) {
+  var make = new ActionDescriptor(), ref = new ActionReference();
+  ref.putClass(s("contentLayer")); make.putReference(s("null"), ref);
+  var content = new ActionDescriptor(), fill = new ActionDescriptor();
+  fill.putObject(s("color"), s("RGBColor"), rgb(color));
+  content.putObject(s("type"), s("solidColorLayer"), fill);
+  make.putObject(s("using"), s("contentLayer"), content);
+  executeAction(s("make"), make, DialogModes.NO);
+}
+function drawPath(op, parent) {
+  var infos = [];
+  for (var i = 0; i < op.subpaths.length; i++) {
+    var points = [], loop = op.subpaths[i];
+    for (var j = 0; j < loop.length; j++) {
+      var p = new PathPointInfo(); p.kind = PointKind.CORNERPOINT;
+      p.anchor = loop[j]; p.leftDirection = loop[j]; p.rightDirection = loop[j];
+      points.push(p);
+    }
+    var sub = new SubPathInfo(); sub.closed = true; sub.operation = ShapeOperation.SHAPEXOR; sub.entireSubPath = points;
+    infos.push(sub);
+  }
+  var path = doc.pathItems.add("tmp_path", infos);
+  path.select();
+  solidLayer(op.color);
+  path.remove();
+  var layer = doc.activeLayer; layer.name = op.name;
+  if (op.opacity < 100) layer.opacity = op.opacity;
+  kinds.shape++;
+}
+function drawSmart(op) {
+  var layer;
+  if (placed[op.file]) {
+    doc.activeLayer = placed[op.file];
+    var d = new ActionDescriptor(), ref = new ActionReference();
+    ref.putEnumerated(s("layer"), s("ordinal"), s("targetEnum")); d.putReference(s("null"), ref);
+    executeAction(s("copyToLayer"), undefined, DialogModes.NO);
+    layer = doc.activeLayer;
+    layer.move(current, ElementPlacement.PLACEATBEGINNING);
+  } else {
+    var place = new ActionDescriptor();
+    place.putPath(s("null"), new File(op.file));
+    executeAction(s("placeEvent"), place, DialogModes.NO);
+    layer = doc.activeLayer;
+    placed[op.file] = layer; if (current !== doc && layer.parent !== current) layer.move(current, ElementPlacement.PLACEATBEGINNING);
+  }
+  layer.name = op.name;
+  var b = layer.bounds, w = b[2].as("px") - b[0].as("px"), h = b[3].as("px") - b[1].as("px");
+  var tw = op.box[2] - op.box[0], th = op.box[3] - op.box[1];
+  layer.resize(tw / w * 100, th / h * 100, AnchorPosition.TOPLEFT);
+  b = layer.bounds;
+  layer.translate(new UnitValue(op.box[0] - b[0].as("px"), "px"), new UnitValue(op.box[1] - b[1].as("px"), "px"));
+  if (op.opacity < 100) layer.opacity = op.opacity;
+  kinds.smart++;
+}
+function drawText(op, parent) {
+  var font = op.font;
+  if (!hasFont(font)) { missingFonts[font] = true; font = "ArialMT"; }
+  var layer = parent.artLayers.add(); layer.kind = LayerKind.TEXT; layer.name = op.name;
+  var t = layer.textItem;
+  t.contents = op.text; t.font = font; t.size = new UnitValue(op.size, "px");
+  t.justification = Justification.CENTER;
+  var c = new SolidColor(); c.rgb.red = op.color[0]; c.rgb.green = op.color[1]; c.rgb.blue = op.color[2]; t.color = c;
+  t.position = [new UnitValue(op.center[0], "px"), new UnitValue(op.center[1], "px")];
+  var size = op.size, b = layer.bounds;
+  while (b[2].as("px") - b[0].as("px") > op.max_width && size > 8) {
+    size -= 1; t.size = new UnitValue(size, "px"); b = layer.bounds;
+  }
+  layer.translate(new UnitValue(op.center[0] - (b[0].as("px") + b[2].as("px")) / 2, "px"),
+                  new UnitValue(op.center[1] - (b[1].as("px") + b[3].as("px")) / 2, "px"));
+  if (op.stroke > 0) {
+    var set = new ActionDescriptor(), ref = new ActionReference();
+    ref.putProperty(s("property"), s("layerEffects")); ref.putEnumerated(s("layer"), s("ordinal"), s("targetEnum"));
+    set.putReference(s("null"), ref);
+    var fx = new ActionDescriptor(), f = new ActionDescriptor();
+    fx.putUnitDouble(s("scale"), s("percentUnit"), 100);
+    f.putBoolean(s("enabled"), true);
+    f.putEnumerated(s("style"), s("frameStyle"), s("outsetFrame"));
+    f.putEnumerated(s("paintType"), s("frameFill"), s("solidColor"));
+    f.putEnumerated(s("mode"), s("blendMode"), s("normal"));
+    f.putUnitDouble(s("opacity"), s("percentUnit"), 100);
+    f.putUnitDouble(s("size"), s("pixelsUnit"), op.stroke);
+    var lum = 0.299 * op.color[0] + 0.587 * op.color[1] + 0.114 * op.color[2];
+    f.putObject(s("color"), s("RGBColor"), rgb(lum > 128 ? [20, 20, 20] : [245, 245, 245]));
+    fx.putObject(s("frameFX"), s("frameFX"), f);
+    set.putObject(s("to"), s("layerEffects"), fx);
+    doc.activeLayer = layer;
+    executeAction(s("set"), set, DialogModes.NO);
+  }
+  kinds.text++;
+}
+var current;
+function buildOps(ops, parent) {
+  for (var i = 0; i < ops.length; i++) {
+    var op = ops[i];
+    current = parent;
+    if (parent !== doc && parent.layers.length) { doc.activeLayer = parent.layers[0]; }
+    else if (parent !== doc) { doc.activeLayer = parent; }
+    else if (doc.layers.length) { doc.activeLayer = doc.layers[0]; }
+    if (op.op === "group") {
+      var g = parent.layerSets.add(); g.name = op.name; kinds.group++;
+      doc.activeLayer = g;
+      buildOps(op.children, g);
+      current = parent;
+    } else if (op.op === "path") drawPath(op, parent);
+    else if (op.op === "smart") drawSmart(op);
+    else if (op.op === "text") drawText(op, parent);
+  }
+}
+var savedUnits = app.preferences.rulerUnits, savedDialogs = app.displayDialogs, result = {};
+app.preferences.rulerUnits = Units.PIXELS; app.displayDialogs = DialogModes.NO;
+try {
+  doc = app.documents.add(PLAN.size[0], PLAN.size[1], 72, PLAN.title, NewDocumentMode.RGB, DocumentFill.TRANSPARENT);
+  var base = doc.artLayers[0]; base.name = "tmp_base";
+  buildOps(PLAN.ops, doc);
+  try {
+    var bottom = doc.layers[doc.layers.length - 1];
+    if (bottom.name !== "tmp_base") throw new Error("already gone");
+    doc.activeLayer = bottom;
+    var del = new ActionDescriptor(), delRef = new ActionReference();
+    delRef.putEnumerated(s("layer"), s("ordinal"), s("targetEnum"));
+    del.putReference(s("null"), delRef);
+    executeAction(s("delete"), del, DialogModes.NO);
+  } catch (ignoredBase) { result.base_left = true; }
+  var options = new PhotoshopSaveOptions(); options.layers = true; options.embedColorProfile = true; options.maximizeCompatibility = true;
+  doc.saveAs(new File(PLAN.psd), options, true);
+  doc.saveAs(new File(PLAN.check), new PNGSaveOptions(), true);
+  doc.close(SaveOptions.DONOTSAVECHANGES);
+  result.ok = true;
+} catch (error) {
+  result.ok = false; result.error = String(error) + " line " + error.line;
+  try { if (doc) doc.close(SaveOptions.DONOTSAVECHANGES); } catch (ignored) {}
+}
+app.preferences.rulerUnits = savedUnits; app.displayDialogs = savedDialogs;
+var names = []; for (var key in missingFonts) names.push('"' + key + '"');
+'{"ok":' + (result.ok ? "true" : "false") + ',"error":"' + String(result.error || "").replace(/[\r\n"\\]/g, " ") + '","shape":' + kinds.shape + ',"text":' + kinds.text + ',"smart":' + kinds.smart + ',"group":' + kinds.group + ',"missing_fonts":[' + names.join(",") + "]}";
+"""
+
+
+def run_photoshop(jsx: Path, timeout: int) -> dict | None:
+    """Run a script in Photoshop on Windows. Return None when Photoshop cannot be reached."""
+    if sys.platform != "win32":
+        return None
+    command = ("$ErrorActionPreference='Stop';$running=[bool](Get-Process Photoshop -ErrorAction SilentlyContinue);"
+               "$ps=New-Object -ComObject Photoshop.Application;"
+               f"$out=$ps.DoJavaScriptFile('{jsx.resolve()}');"
+               "if(-not $running){$ps.Quit()};[Console]::OutputEncoding=[Text.Encoding]::UTF8;Write-Output $out")
+    try:
+        done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    start, end = done.stdout.find("{"), done.stdout.rfind("}")
+    if start < 0 or end < start:
+        return None
+    try:
+        return json.loads(done.stdout[start:end + 1])
+    except ValueError:
+        return {"ok": False, "error": done.stdout[start:end + 1][:300]}
+
+
+def layout_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read_confirmed(kit: Path) -> dict:
+    path = kit / "mockups" / "confirmed.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"wireframe": {}, "screens": {}}
+
+
+def write_confirmed(kit: Path, data: dict) -> None:
+    (kit / "mockups").mkdir(parents=True, exist_ok=True)
+    (kit / "mockups" / "confirmed.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def confirmed_screens(kit: Path) -> tuple[list[str], list[str]]:
+    """Return confirmed screens, and those whose layout changed after being confirmed."""
+    data = read_confirmed(kit)
+    good, stale = [], []
+    for screen, record in data["screens"].items():
+        path = kit / "mockups" / f"{record['layout']}.json"
+        if path.exists() and layout_hash(path) == record["hash"]:
+            good.append(screen)
+        else:
+            stale.append(screen)
+    return good, stale
+
+
+def wireframe_confirmed(kit: Path) -> tuple[bool, list[str]]:
+    data = read_confirmed(kit)["wireframe"]
+    if not data:
+        return False, []
+    picked = selected_layouts(kit, strict=False)
+    changed = [s for s in data if s not in picked or layout_hash(picked[s]) != data[s]["hash"]]
+    added = [s for s in picked if s not in data]
+    return not changed and not added, changed + added
+
+
+def cmd_confirm(args) -> int:
+    kit = Path(args.kit)
+    data = read_confirmed(kit)
+    if args.target == "wireframe":
+        picked = selected_layouts(kit, args.variant)
+        for screen, path in picked.items():
+            data["wireframe"][screen] = {"layout": path.stem, "hash": layout_hash(path)}
+        write_confirmed(kit, data)
+        print(f"Confirmed the wireframe of {len(picked)} screens: {sorted(picked)}")
+        return 0
+    screen = args.target
+    if args.variant:
+        variant = args.variant if args.variant.startswith(screen) else f"{screen}__{args.variant}"
+        options = [p.stem for p in layout_paths(kit, screen)]
+        if variant not in options:
+            die("NOT_FOUND", f"{variant} is not one of {options}", 1)
+        chosen = read_chosen(kit)
+        chosen[screen] = variant
+        (kit / "mockups" / "chosen.json").write_text(json.dumps(chosen, indent=2), encoding="utf-8")
+    picked = selected_layouts(kit, screen)
+    path = picked[screen]
+    data["screens"][screen] = {"layout": path.stem, "hash": layout_hash(path)}
+    write_confirmed(kit, data)
+    print(f"{screen}: confirmed {path.stem}")
+    return 0
+
+
+def export_targets(kit: Path, args) -> dict[str, Path]:
+    """Pick screens to export: confirmed ones only, unless --unconfirmed is given."""
+    picked = selected_layouts(kit, args.screen)
+    if args.unconfirmed:
+        return picked
+    good, stale = confirmed_screens(kit)
+    if stale:
+        print(f"Changed since being confirmed, so skipped: {sorted(stale)}")
+    allowed = {s: p for s, p in picked.items() if s in good}
+    if not allowed:
+        die("NOT_CONFIRMED", f"confirm a screen first. Screens: {sorted(picked)}")
+    skipped = sorted(set(picked) - set(allowed) - set(stale))
+    if skipped:
+        print(f"Not confirmed, so skipped: {skipped}")
+    return allowed
+
+
+def cmd_psd(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    targets = export_targets(kit, args)
+    layouts = {s: read_layout(p) for s, p in targets.items()}
+    with_image = [s for s, l in layouts.items() if isinstance(l.get("background"), str) and not l["background"].startswith("#")]
+    if with_image and not args.background:
+        die("NEEDS_BACKGROUND_CHOICE", f"ask the user: redraw or keep the background as one image layer? Screens: {with_image}. "
+            "Then pass --background redraw|image.", 3)
+    art = sorted({i["element"] for l in layouts.values() for i in l["items"]
+                  if i.get("element") in manifest["elements"] and is_art(i["element"], i)})
+    if art and not args.art:
+        die("NEEDS_ART_CHOICE", f"ask the user: redraw these characters, environments and other art, or keep them as images? {art}. "
+            "Then pass --art redraw|image.", 3)
+    psd_dir = kit / "export" / "psd"
+    assets = psd_dir / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    existing = [s for s in targets if (psd_dir / f"{s}.psd").exists()]
+    if existing and not args.force:
+        die("EXISTS", f"{existing} already exported. Pass --force only if replacing them was requested.", 1)
+
+    report = {}
+    status = 0
+    for screen, layout in layouts.items():
+        size = tuple(layout["size"])
+        font_path, font_source = resolve_font(kit, layout)
+        font = psd_font(font_path)
+        nodes, notes = build_tree(kit, layout, manifest, screen, args.background)
+        stats = {"vector": [], "image": [], "art_as_images": [], "upscaled": [], "text": 0}
+        ops = []
+        background = layout.get("background")
+        if isinstance(background, str) and background.startswith("#"):
+            color = list(ImageColor.getrgb(background)[:3])
+            ops.append({"op": "path", "name": f"bg_{slug(screen)}", "color": color, "opacity": 100,
+                        "subpaths": [[[0, 0], [size[0], 0], [size[0], size[1]], [0, size[1]]]]})
+        elif background:
+            file = kit / manifest["elements"][background]["file"] if background in manifest["elements"] else kit / background
+            bg_name = f"bg_{slug(Path(str(background)).stem)}"
+            if args.background == "redraw" and background in manifest["elements"]:
+                bg_node = {"name": bg_name, "box": [0, 0, size[0], size[1]], "item": {"element": background, "w": size[0], "h": size[1], "mode": "stretch"},
+                           "element": background, "entry": manifest["elements"][background]}
+                ops += psd_ops(kit, bg_node, layout, font, args, stats, assets)
+                if bg_name in stats["image"]:
+                    notes.append(f"{bg_name}: too detailed to redraw accurately, so it stayed an image layer")
+            else:
+                ops.append({"op": "smart", "name": bg_name, "file": file.resolve().as_posix(), "box": [0, 0, size[0], size[1]], "opacity": 100})
+        for node in nodes:
+            ops += psd_ops(kit, node, layout, font, args, stats, assets)
+        psd = psd_dir / f"{screen}.psd"
+        check = psd_dir / "assets" / f"{screen}_check.png"
+        plan = {"size": list(size), "title": screen, "ops": ops, "psd": psd.resolve().as_posix(), "check": check.resolve().as_posix()}
+        jsx = psd_dir / f"{screen}.jsx"
+        jsx.write_text(PSD_JSX.replace("__PLAN__", json.dumps(plan, ensure_ascii=True)), encoding="utf-8")
+        result = None if args.no_run else run_photoshop(jsx, args.timeout)
+        entry = {"psd": psd.relative_to(kit).as_posix() if result and result.get("ok") else None,
+                 "script": jsx.relative_to(kit).as_posix(), "redrawn_as_shapes": stats["vector"],
+                 "kept_as_images": stats["image"], "art_kept_as_images": stats["art_as_images"], "live_text": stats["text"], "font": font, "font_source": font_source,
+                 "warnings": notes + stats["upscaled"]}
+        if result is None:
+            entry["status"] = "script only: open the .jsx with Photoshop, File > Scripts > Browse"
+            status = max(status, 2 if not args.no_run else 0)
+        elif not result.get("ok"):
+            entry["status"] = f"failed: {result.get('error')}"
+            status = 2
+        else:
+            entry["status"] = "built in Photoshop"
+            entry["layers"] = {k: result[k] for k in ("shape", "text", "smart", "group")}
+            entry["fonts_not_installed"] = result.get("missing_fonts", [])
+            if check.exists():
+                flat = flatten(build_layers(kit, layout, manifest)[0], size)
+                entry["difference_from_mockup"] = round(score_shapes(np.asarray(flat.convert("RGBA")).astype(float),
+                                                                       np.asarray(Image.open(check).convert("RGBA")).astype(float)), 2)
+        report[screen] = entry
+        print(json.dumps({"screen": screen, **{k: (len(v) if isinstance(v, list) and k in ("redrawn_as_shapes", "kept_as_images", "art_kept_as_images") else v) for k, v in entry.items()}}, indent=1, ensure_ascii=True))
+    (kit / "export" / "psd_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    return status
+
+
+def anchor_of(center: float, size: float) -> float:
+    position = center / size
+    return 0.0 if position < 1 / 3 else (1.0 if position > 2 / 3 else 0.5)
+
+
+def unity_node(node: dict, size: tuple[int, int], font_name: str, origin: tuple[float, float] = (0, 0)) -> dict:
+    """Describe a node relative to its parent. size and origin are the parent's rectangle."""
+    if node.get("folder"):
+        return {"name": node["name"], "type": "group", "stretch": True,
+                "children": [unity_node(child, size, font_name, origin) for child in node["children"]]}
+    item, entry = node["item"], node["entry"]
+    x0, y0, x1, y1 = node["box"]
+    cx, cy = (x0 + x1) / 2 - origin[0], (y0 + y1) / 2 - origin[1]
+    ax, ay = anchor_of(cx, size[0]), anchor_of(cy, size[1])
+    result = {"name": node["name"], "type": "image" if entry else "text",
+              "anchor": [ax, 1 - ay], "pivot": [0.5, 0.5],
+              "position": [round(cx - ax * size[0], 2), round(ay * size[1] - cy, 2)],
+              "size": [x1 - x0, y1 - y0]}
+    text = None
+    if "text" in item:
+        text = {"text": str(item["text"]), "font": font_name, "fontSize": round(item.get("text_size", max(12, (y1 - y0) * 0.45))),
+                "color": item.get("text_color", "#FFFFFF"), "outline": round(item.get("text_stroke", 0)), "alignment": "center"}
+    if entry:
+        nine = entry.get("nine_slice") or {}
+        sliced = nine.get("status") == "suggested" and "w" in item and "h" in item and item.get("mode", "auto") in ("auto", "nine")
+        result.update({"sprite": entry["file"], "spriteSize": [entry["width"], entry["height"]],
+                       "imageType": "sliced" if sliced else "simple", "preserveAspect": not sliced and item.get("mode") != "stretch"})
+        if nine.get("status") == "suggested":
+            result["border"] = {k: nine[k] for k in ("left", "bottom", "right", "top")}
+        if "fill" in item:
+            result["fillValue"] = item["fill"]
+    if item.get("opacity", 1) < 1:
+        result["alpha"] = item["opacity"]
+    if "goto" in item:
+        result["onClick"] = {"goto": item["goto"]}
+    children = []
+    if text:
+        if entry:
+            children.append({"name": f"text_{slug(item['text'])}", "type": "text", "anchor": [0.5, 0.5], "pivot": [0.5, 0.5],
+                             "stretch": True, **text})
+        else:
+            result.update(text)
+    children += [unity_node(child, (x1 - x0, y1 - y0), font_name, (x0, y0)) for child in node.get("children", [])]
+    if children:
+        result["children"] = children
+    return result
+
+
+def cmd_unity(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    targets = export_targets(kit, args)
+    out_dir = kit / "export" / "unity"
+    existing = [s for s in targets if (out_dir / f"{s}.json").exists()]
+    if existing and not args.force:
+        die("EXISTS", f"{existing} already exported. Pass --force only if replacing them was requested.", 1)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for screen, path in targets.items():
+        layout = read_layout(path)
+        size = tuple(layout["size"])
+        nodes, notes = build_tree(kit, layout, manifest, screen, None)
+        font_path, source = resolve_font(kit, layout)
+        font_name = Path(font_path).stem if font_path else "default"
+        background = layout.get("background")
+        mapping = {"version": 1, "screen": screen, "layout": path.stem, "referenceResolution": list(size),
+                   "canvasScaler": {"mode": "ScaleWithScreenSize", "matchWidthOrHeight": 1}, "font": font_name,
+                   "spritesRoot": "elements" , "background": background,
+                   "nodes": [unity_node(node, size, font_name) for node in nodes]}
+        (out_dir / f"{screen}.json").write_text(json.dumps(mapping, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"{screen}: export/unity/{screen}.json, {len(nodes)} top-level nodes, {len(notes)} naming notes")
+    return 0
+
+
+def cmd_resize_layout(args) -> int:
+    """Rescale a layout to a new canvas, uniformly, centered, without distorting anything."""
+    kit = Path(args.kit)
+    width, height = (int(v) for v in args.size.lower().split("x"))
+    paths = layout_paths(kit, args.screen)
+    if not paths:
+        die("NO_LAYOUT", "no layouts to resize", 1)
+    for path in paths:
+        layout = read_layout(path)
+        old_w, old_h = layout["size"]
+        scale = min(width / old_w, height / old_h)
+        ox, oy = (width - old_w * scale) / 2, (height - old_h * scale) / 2
+        for item in layout["items"]:
+            item["x"] = round(item["x"] * scale + ox, 2)
+            item["y"] = round(item["y"] * scale + oy, 2)
+            for key in ("w", "h", "text_size", "text_stroke"):
+                if key in item:
+                    item[key] = round(item[key] * scale, 2)
+        layout["size"] = [width, height]
+        path.write_text(json.dumps(layout, indent=2, ensure_ascii=False), encoding="utf-8")
+        note = "" if abs(old_w / old_h - width / height) < 0.005 else f", ratio differs so {round(ox)} px sides and {round(oy)} px top and bottom are empty"
+        print(f"{path.stem}: {old_w}x{old_h} to {width}x{height}, scale {scale:.3f}{note}")
+    return 0
+
+
+def device_layout(layout: dict, width: int, height: int) -> dict:
+    """Simulate another screen: keep height scale, keep items near their nearest screen edge."""
+    old_w, old_h = layout["size"]
+    scale = height / old_h
+    moved = {**layout, "size": [width, height], "items": []}
+    for item in layout["items"]:
+        ax = anchor_of(item["x"], old_w)
+        new = dict(item)
+        new["x"] = round(ax * width + (item["x"] - ax * old_w) * scale, 2)
+        new["y"] = round(item["y"] * scale, 2)
+        for key in ("w", "h", "text_size", "text_stroke"):
+            if key in new:
+                new[key] = round(new[key] * scale, 2)
+        moved["items"].append(new)
+    return moved
+
+
+def cmd_device(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    picked = selected_layouts(kit, args.screen, strict=False)
+    devices = {"16x9": (1920, 1080), "20x9": (2400, 1080), "16x10": (1728, 1080), "4x3": (1440, 1080)}
+    out_dir = kit / "preview" / "devices"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    problems = 0
+    for screen, path in picked.items():
+        layout = read_layout(path)
+        thumbs = []
+        for label, (width, height) in devices.items():
+            layers, warnings, _, _ = build_layers(kit, device_layout(layout, width, height), manifest)
+            image = flatten(layers, (width, height))
+            image.thumbnail((640, 360))
+            thumbs.append((label, image))
+            serious = [w for w in warnings if "outside" in w or "does not fit" in w]
+            problems += len(serious)
+            print(f"{screen} {label}: {len(serious)} problems")
+            for warning in serious:
+                print(f"  {warning}".encode("ascii", "replace").decode())
+        board = Image.new("RGB", (sum(t.width for _, t in thumbs) + 16 * 5, 400), (245, 245, 245))
+        draw = ImageDraw.Draw(board)
+        x = 16
+        for label, thumb in thumbs:
+            draw.text((x, 8), label, fill=(20, 20, 20), font=load_font(20, None))
+            board.paste(thumb, (x, 36))
+            x += thumb.width + 16
+        board.save(out_dir / f"{screen}.png")
+    print(f"Boards are in preview/devices/. {problems} problems.")
+    return 0
+
+
+def cmd_spec(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    picked = selected_layouts(kit, args.screen, strict=False)
+    out_dir = kit / "export" / "spec"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    palette = read_palette(kit)
+    for screen, path in picked.items():
+        layout = read_layout(path)
+        size = tuple(layout["size"])
+        nodes, _ = build_tree(kit, layout, manifest, screen, None)
+        font_path, _ = resolve_font(kit, layout)
+        lines = [f"# {layout.get('title', screen)}", "", f"- Canvas: {size[0]} x {size[1]}",
+                 f"- Font: {Path(font_path).name if font_path else 'not chosen'}",
+                 f"- Palette: {', '.join(palette['colors']) if palette else 'not recorded'}", "",
+                 "| Name | Type | X | Y | W | H | 9-slice (L B R T) | Text | Opens |", "|---|---|---|---|---|---|---|---|---|"]
+        flat = []
+
+        def collect(items, depth):
+            for node in items:
+                if not node.get("folder"):
+                    flat.append((node, depth))
+                collect(node.get("children", []), depth + (0 if node.get("folder") else 1))
+
+        collect(nodes, 0)
+        for node, depth in flat:
+            item, entry = node["item"], node["entry"]
+            x0, y0, x1, y1 = node["box"]
+            nine = (entry or {}).get("nine_slice") or {}
+            border = " ".join(str(nine[k]) for k in ("left", "bottom", "right", "top")) if nine.get("status") == "suggested" else ""
+            text = str(item.get("text", "")).replace("|", "/")
+            lines.append(f"| {'-- ' * depth}{node['name']} | {'sprite' if entry else 'text'} | {x0} | {y0} | {x1 - x0} | {y1 - y0} | {border} | {text} | {item.get('goto', '')} |")
+        (out_dir / f"{screen}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print(f"{screen}: export/spec/{screen}.md, {len(flat)} items")
     return 0
 
 
@@ -1731,6 +2639,58 @@ def main() -> int:
     p.add_argument("variant", help="For example v2")
     p.set_defaults(func=cmd_choose)
 
+    p = commands.add_parser("confirm", help="Confirm the wireframe or a screen; a later layout edit undoes it")
+    p.add_argument("kit")
+    p.add_argument("target", help="wireframe, or a screen name")
+    p.add_argument("variant", nargs="?", help="For a screen: v2. For wireframe: one screen")
+    p.set_defaults(func=cmd_confirm)
+
+    p = commands.add_parser("vectorize", help="Redraw sprites as flat shapes and score them against the source")
+    p.add_argument("kit")
+    p.add_argument("--match", action="append")
+    p.add_argument("--max-layers", type=int, default=24)
+    p.add_argument("--max-points", type=int, default=6000)
+    p.add_argument("--max-difference", type=float, default=6.0, help="Worse than this stays an image")
+    p.add_argument("--force", action="store_true", help="Trace again")
+    p.set_defaults(func=cmd_vectorize)
+
+    p = commands.add_parser("psd", help="Build an editable PSD in Photoshop: shapes, live text, smart objects, groups")
+    p.add_argument("kit")
+    p.add_argument("--screen")
+    p.add_argument("--background", choices=["redraw", "image"], help="Required when a screen has an image background")
+    p.add_argument("--art", choices=["redraw", "image"], help="Required when a screen uses characters or environment art")
+    p.add_argument("--unconfirmed", action="store_true", help="Also export screens not yet confirmed")
+    p.add_argument("--no-run", action="store_true", help="Only write the Photoshop script")
+    p.add_argument("--timeout", type=int, default=900)
+    p.add_argument("--max-layers", type=int, default=24)
+    p.add_argument("--max-points", type=int, default=6000)
+    p.add_argument("--max-difference", type=float, default=6.0)
+    p.add_argument("--force", action="store_true", help="Replace existing exports")
+    p.set_defaults(func=cmd_psd)
+
+    p = commands.add_parser("unity", help="Write a JSON mapping per screen for assembling in Unity")
+    p.add_argument("kit")
+    p.add_argument("--screen")
+    p.add_argument("--unconfirmed", action="store_true")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_unity)
+
+    p = commands.add_parser("resize-layout", help="Rescale layouts to a new canvas without distortion")
+    p.add_argument("kit")
+    p.add_argument("--size", default="1920x1080")
+    p.add_argument("--screen")
+    p.set_defaults(func=cmd_resize_layout)
+
+    p = commands.add_parser("device", help="Preview screens at other aspect ratios")
+    p.add_argument("kit")
+    p.add_argument("--screen")
+    p.set_defaults(func=cmd_device)
+
+    p = commands.add_parser("spec", help="Write a handoff table per screen")
+    p.add_argument("kit")
+    p.add_argument("--screen")
+    p.set_defaults(func=cmd_spec)
+
     p = commands.add_parser("flow", help="Draw the screen flow and build a clickable HTML demo")
     p.add_argument("kit")
     p.add_argument("--start", help="First screen of the demo")
@@ -1740,6 +2700,7 @@ def main() -> int:
     p = commands.add_parser("export", help="Write layered PSD and flat PNG files for approved screens")
     p.add_argument("kit")
     p.add_argument("--screen", help="One screen; defaults to all")
+    p.add_argument("--unconfirmed", action="store_true", help="Also export screens not yet confirmed")
     p.add_argument("--force", action="store_true", help="Replace existing exports")
     p.set_defaults(func=cmd_export)
 

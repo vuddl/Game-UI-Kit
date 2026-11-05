@@ -1,0 +1,5 @@
+interface:
+  display_name: "GUI tone"
+  short_description: "Show or change where the game UI tone comes from"
+policy:
+  allow_implicit_invocation: false
