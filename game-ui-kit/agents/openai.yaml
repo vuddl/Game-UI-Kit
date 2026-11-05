@@ -1,0 +1,4 @@
+interface:
+  display_name: "Game UI Kit"
+  short_description: "Generate a full game UI art set as named PNGs"
+  default_prompt: "Use $game-ui-kit to create a complete UI art set for my game."
