@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Turn UI sheets and loose sprites into a named kit with 9-slice data and checks.
 
-Commands: slice, import, nineslice, states, compare, wireframe, mockup, choose, flow, export, info, qa.
+Commands: slice, import, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, flow, export,
+info, qa.
 Run any of them with --help.
 Exit codes: 0 ok, 1 usage or input error, 2 result needs a fix (see output).
 """
@@ -18,6 +19,7 @@ import shutil
 import struct
 import sys
 import unicodedata
+import urllib.request
 from pathlib import Path
 
 try:
@@ -395,8 +397,9 @@ def cmd_compare(args) -> int:
     missing = [str(p) for p in refs if not p.exists()]
     if missing:
         die("NOT_FOUND", f"{missing}", 1)
-    if not refs:
-        die("NO_REFERENCES", "add style/style_anchor.png, style/references/ or --ref.", 1)
+    locked = read_palette(kit)
+    if not refs and not locked:
+        die("NO_REFERENCES", "add style/palette.json, style/style_anchor.png, style/references/ or --ref.", 1)
 
     palette_sets, ref_pixels = [], []
     for ref in refs:
@@ -404,11 +407,12 @@ def cmd_compare(args) -> int:
         if len(pixels):
             ref_pixels.append(pixels)
             palette_sets.append(palette_of(pixels))
-    if not ref_pixels:
+    if not ref_pixels and not locked:
         die("NO_REFERENCES", "the references have no visible pixels.", 1)
-    palette_rgb = np.concatenate(palette_sets)
+    # A recorded palette is the tone decision, so it replaces whatever the references contain.
+    palette_rgb = np.array([from_hex(c) for c in locked["colors"]]) if locked else np.concatenate(palette_sets)
     palette_lab = rgb_to_lab(palette_rgb)
-    ref_lab = rgb_to_lab(np.concatenate(ref_pixels))
+    ref_lab = rgb_to_lab(palette_rgb if locked else np.concatenate(ref_pixels))
     light = np.percentile(ref_lab[:, 0], [5, 95])
     chroma = np.percentile(np.hypot(ref_lab[:, 1], ref_lab[:, 2]), [5, 95])
 
@@ -440,7 +444,8 @@ def cmd_compare(args) -> int:
 
     board = compare_board(kit, manifest, refs, palette_rgb, report)
     review = [n for n, r in report.items() if r["status"] == "review"]
-    summary = {"references": [p.name for p in refs][:20], "reference_count": len(refs),
+    summary = {"tone_source": locked["source"] if locked else "references",
+               "references": [p.name for p in refs][:20], "reference_count": len(refs),
                "compared": len(report), "review": review, "board": board.relative_to(kit).as_posix(),
                "elements": report}
     (kit / "compare_report.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -487,6 +492,136 @@ def compare_board(kit: Path, manifest: dict, refs: list[Path], palette: np.ndarr
     out.parent.mkdir(parents=True, exist_ok=True)
     board.save(out)
     return out
+
+
+def read_palette(kit: Path) -> dict | None:
+    path = kit / "style" / "palette.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def parse_region(text: str, size: tuple[int, int]) -> tuple[int, int, int, int]:
+    try:
+        x0, y0, x1, y1 = (int(v) for v in text.split(","))
+    except ValueError:
+        die("BAD_REGION", f"{text}: use x0,y0,x1,y1 in pixels", 1)
+    if not (0 <= x0 < x1 <= size[0] and 0 <= y0 < y1 <= size[1]):
+        die("BAD_REGION", f"{text} is outside the {size[0]}x{size[1]} image", 1)
+    return x0, y0, x1, y1
+
+
+def cmd_palette(args) -> int:
+    kit = Path(args.kit)
+    target = kit / "style" / "palette.json"
+    if bool(args.image) == bool(args.hex):
+        die("BAD_INPUT", "give either a reference image or --hex", 1)
+    if target.exists() and not args.force:
+        die("EXISTS", f"{target} already records the tone. Pass --force only when deliberately changing it.", 1)
+    if args.hex:
+        colors = [c.strip().upper() for c in args.hex.split(",") if c.strip()]
+        bad = [c for c in colors if not re.fullmatch(r"#[0-9A-F]{6}", c)]
+        if bad or not colors:
+            die("BAD_INPUT", f"use #RRGGBB values: {bad}", 1)
+        source = "chosen colors"
+    else:
+        path = Path(args.image)
+        if not path.exists():
+            die("NOT_FOUND", str(path), 1)
+        img = Image.open(path).convert("RGBA")
+        boxes = [parse_region(r, img.size) for r in args.region or []] or [(0, 0, *img.size)]
+        chunks = [np.asarray(img.crop(b)).reshape(-1, 4) for b in boxes]
+        pixels = np.concatenate(chunks)
+        pixels = pixels[pixels[:, 3] > 128][:, :3].astype(float)
+        if not len(pixels):
+            die("NO_PIXELS", "the image or regions have no visible pixels", 1)
+        colors = [to_hex(c) for c in palette_of(pixels, args.colors)]
+        source = f"{path.name}, {len(boxes)} region(s)" if args.region else path.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps({"source": source, "colors": colors}, indent=2), encoding="utf-8")
+    swatch = Image.new("RGB", (max(1, len(colors)) * 110, 110), (255, 255, 255))
+    draw = ImageDraw.Draw(swatch)
+    for i, color in enumerate(colors):
+        draw.rectangle([i * 110, 0, i * 110 + 109, 80], fill=color)
+        draw.text((i * 110 + 6, 88), color, fill=(20, 20, 20))
+    out = kit / "preview" / "palette.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    swatch.save(out)
+    print(f"Recorded {len(colors)} colors from {source}: {' '.join(colors)}. Swatch: preview/palette.png")
+    return 0
+
+
+FONT_ROOT = "https://raw.githubusercontent.com/google/fonts/main/"
+FONT_CATALOG = {
+    "lilita one": ("ofl/lilitaone", "LilitaOne-Regular.ttf"), "titan one": ("ofl/titanone", "TitanOne-Regular.ttf"),
+    "luckiest guy": ("apache/luckiestguy", "LuckiestGuy-Regular.ttf"), "bungee": ("ofl/bungee", "Bungee-Regular.ttf"),
+    "russo one": ("ofl/russoone", "RussoOne-Regular.ttf"), "passion one": ("ofl/passionone", "PassionOne-Bold.ttf"),
+    "changa one": ("ofl/changaone", "ChangaOne-Regular.ttf"),
+    "press start 2p": ("ofl/pressstart2p", "PressStart2P-Regular.ttf"),
+    "silkscreen": ("ofl/silkscreen", "Silkscreen-Regular.ttf"), "vt323": ("ofl/vt323", "VT323-Regular.ttf"),
+    "medievalsharp": ("ofl/medievalsharp", "MedievalSharp.ttf"),
+    "cinzel decorative": ("ofl/cinzeldecorative", "CinzelDecorative-Bold.ttf"),
+    "black ops one": ("ofl/blackopsone", "BlackOpsOne-Regular.ttf"), "audiowide": ("ofl/audiowide", "Audiowide-Regular.ttf"),
+    "creepster": ("ofl/creepster", "Creepster-Regular.ttf"),
+}
+
+
+def kit_fonts(kit: Path) -> list[Path]:
+    folder = kit / "fonts"
+    return sorted(p for p in folder.glob("*") if p.suffix.lower() in (".ttf", ".otf")) if folder.is_dir() else []
+
+
+def resolve_font(kit: Path, layout: dict) -> tuple[str | None, str]:
+    """Return the font path and where it came from: the layout, then the kit, then the system."""
+    named = layout.get("font")
+    if named:
+        for candidate in (kit / named, Path(named)):
+            if candidate.is_file():
+                return str(candidate), "layout"
+    fonts = kit_fonts(kit)
+    return (str(fonts[0]), "kit") if fonts else (None, "system")
+
+
+def missing_glyphs(text: str, font) -> list[str]:
+    """List characters that would draw as an empty box, by comparing with a missing glyph."""
+    box = bytes(font.getmask("\U0010FFFF"))
+    return sorted({c for c in text if not c.isspace() and bytes(font.getmask(c)) == box})
+
+
+def cmd_fonts(args) -> int:
+    kit = Path(args.kit)
+    if args.add:
+        entry = FONT_CATALOG.get(args.add.strip().lower())
+        if not entry:
+            die("NOT_IN_CATALOG", f"{args.add} is not in the catalog: {sorted(FONT_CATALOG)}", 1)
+        folder, file = entry
+        target = kit / "fonts" / file
+        if target.exists():
+            print(f"Already in the kit: fonts/{file}")
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            license_name = "LICENSE.txt" if folder.startswith("apache") else "OFL.txt"
+            try:
+                for url, path in ((FONT_ROOT + f"{folder}/{file}", target),
+                                  (FONT_ROOT + f"{folder}/{license_name}", target.with_name(f"{target.stem}_{license_name}"))):
+                    request = urllib.request.Request(url, headers={"User-Agent": "game-ui-kit"})
+                    with urllib.request.urlopen(request, timeout=30) as response:
+                        path.write_bytes(response.read())
+                ImageFont.truetype(str(target), 20)
+            except (OSError, ValueError) as exc:
+                target.unlink(missing_ok=True)
+                die("DOWNLOAD_FAILED", f"{args.add}: {exc}. Allow network access or ask the user for a font file.")
+            print(f"Added fonts/{file} with its license.")
+    fonts = kit_fonts(kit)
+    print(f"Kit fonts: {[p.name for p in fonts] or 'none'}")
+    problems = 0
+    for path in layout_paths(kit):
+        layout = read_layout(path)
+        font_path, source = resolve_font(kit, layout)
+        font = load_font(32, font_path)
+        texts = [str(i["text"]) for i in layout["items"] if "text" in i]
+        lacking = sorted({c for t in texts for c in missing_glyphs(t, font)})
+        print(f"{path.stem}: font from {source}, {len(texts)} texts" + (f", missing glyphs: {lacking}".encode("ascii", "backslashreplace").decode() if lacking else ""))
+        problems += bool(lacking)
+    return 2 if problems else 0
 
 
 def stretch_band(image: np.ndarray, axis: int, tolerance: float, min_share: float):
@@ -780,6 +915,9 @@ def text_layer(size: tuple[int, int], item: dict, box, font_path, warn) -> Image
     limit = (x1 - x0) * 0.9
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
     font = load_font(text_size, font_path)
+    lacking = missing_glyphs(text, font)
+    if lacking:
+        warn(f'text "{text}": the font has no glyph for {lacking}')
     while probe.textlength(text, font=font) + stroke * 2 > limit and text_size > 8:
         text_size -= 1
         font = load_font(text_size, font_path)
@@ -862,7 +1000,9 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
     width, height = size
     warnings, missing, used, boxes, layers = [], [], [], [], []
     warn = warnings.append
-    font_path = layout.get("font")
+    font_path, font_source = resolve_font(kit, layout)
+    if font_source == "system" and any("text" in i for i in layout["items"]):
+        warn("no font in the kit, so a system font was used")
 
     def add(image: Image.Image, name: str, group=None):
         bbox = image.getbbox()
@@ -1054,7 +1194,7 @@ def render_wireframe(kit: Path, path: Path, manifest: dict) -> Path:
     image = Image.new("RGB", size, (236, 238, 242))
     draw = ImageDraw.Draw(image)
     scale = min(size) / 500
-    label_font = load_font(max(11, round(13 * scale)), layout.get("font"))
+    label_font = load_font(max(11, round(13 * scale)), resolve_font(kit, layout)[0])
     for item in layout["items"]:
         name = item.get("element")
         entry = manifest["elements"].get(name) if name else None
@@ -1409,6 +1549,8 @@ def cmd_info(args) -> int:
         "total_mockups": sum(len(stems) for stems in screens.values()),
         "qa": {"errors": len(qa["errors"]), "warnings": len(qa["warnings"])} if qa else "not run",
         "compare": {"review": len(compare["review"])} if compare else "not run",
+        "tone": read_palette(kit) or "not locked",
+        "fonts": [p.name for p in kit_fonts(kit)] or "none, system font in use",
         "flow_demo": (kit / "demo" / "index.html").exists(),
         "exported_psd": exports,
         "next_step": step,
@@ -1535,6 +1677,20 @@ def main() -> int:
     p.add_argument("--map", help="File with lines of: relative/file.png = element/name. Imports only these")
     p.add_argument("--force", action="store_true", help="Replace existing elements")
     p.set_defaults(func=cmd_import)
+
+    p = commands.add_parser("palette", help="Record the kit's tone from an image or chosen colors")
+    p.add_argument("kit")
+    p.add_argument("image", nargs="?", help="Reference image")
+    p.add_argument("--region", action="append", help="x0,y0,x1,y1 to sample only the UI, repeatable")
+    p.add_argument("--hex", help="Comma-separated chosen colors, instead of an image")
+    p.add_argument("--colors", type=int, default=8)
+    p.add_argument("--force", action="store_true", help="Replace the recorded palette")
+    p.set_defaults(func=cmd_palette)
+
+    p = commands.add_parser("fonts", help="List kit fonts, check glyphs, or add a font from the catalog")
+    p.add_argument("kit")
+    p.add_argument("--add", help="Open-license font name from the catalog")
+    p.set_defaults(func=cmd_fonts)
 
     p = commands.add_parser("compare", help="Compare elements with references and draw a side-by-side board")
     p.add_argument("kit")

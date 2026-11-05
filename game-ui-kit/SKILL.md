@@ -32,6 +32,7 @@ The user can type these after `$game-ui-kit`, in any language, or say the same t
 | Command | What to do |
 |---|---|
 | `/info` | Run the `info` script and report the status and next step in plain words. Change nothing. |
+| `/tone [auto\|game\|ref]` | Set where the tone comes from. `auto` is the default and you decide; `game` and `ref` force that source. With no argument, report the current tone and why. Replace the palette with `--force`, and say how many existing sprites no longer match, using `compare`. Do not regenerate them unless asked. |
 | `/wireframe [x]` | Propose layouts as gray boxes and the flow between screens, `x` options per screen, default 1. See Wireframes and flow. |
 | `/mockup [x] [keep\|rearrange]` | Build `x` mockups per screen from real sprites, default 1. See Mockup. |
 | `/choose <screen> v<n>` | Record the approved variant with the `choose` script. |
@@ -69,7 +70,34 @@ Import each family into its own prefix, or use `--map` with lines of `relative/f
 
 Collect the game, its genre, platform and orientation, the screens needed, and any references. Ask only for what is missing and blocks the work, at most one short message. If screens are not named, default to main menu, popup, shop and HUD.
 
-Label each input image as **style reference** or **edit target**. Load local files with `view_image` first so the tool can see them. When extending a kit the user owns or says is licensed for this, match it closely. Otherwise, match the general art direction of a third-party kit without reproducing its elements one for one. If the user wants an exact copy of a purchased kit, say that its license decides this.
+Label each input image as **style reference** or **edit target**. Load local files with `view_image` first so the tool can see them. Give each reference one or more roles, and say them back to the user:
+
+| Role | Decides | Stored in |
+|---|---|---|
+| **style** | Line work, shapes and materials | `style/references/` |
+| **layout** | Positions and sizes | a layout's `reference` |
+| **function** | Which controls must exist | `style/function_reference/` |
+
+**Decide the tone yourself** before generating or laying out anything, unless the user already set it with `/tone`. A reference is evidence, not the default. Weigh:
+
+- **The game:** its genre, audience and mood, and the colors of its scene. UI must stay readable over that scene and feel part of the same world.
+- **The references:** any existing UI's colors and surface treatment, and how well they suit this game.
+- **Any kit art being reused:** new art must still sit beside it as one set.
+
+Then use whichever fits best: the game's world, a reference, or a palette you compose from several. Decide the surface treatment too (opaque, translucent or outlined), since a palette alone does not capture it. Record the source and reason in `style/style_guide.md`, and tell the user in one or two lines: what you chose, why, and that `/tone` changes it. Do not stop to ask, except when `/tone` is requested without a clear answer.
+
+Record the decision so everything stays consistent. Sample an image, using regions to keep out what you do not want, or give composed colors:
+
+```bash
+py -3 <skill>/scripts/uikit.py palette ui_art/<kit> <image> --region 0,0,240,120 --region 700,0,864,300
+```
+```bash
+py -3 <skill>/scripts/uikit.py palette ui_art/<kit> --hex "#112233,#445566"
+```
+
+View `preview/palette.png`, and use tighter regions if it picked up colors you did not intend. Use only these colors in sheet prompts, layout backgrounds and text. Once sprites exist, change the palette only when the tone is deliberately changed, because existing sprites will not follow it and must be regenerated.
+
+When extending a kit the user owns or says is licensed for this, match it closely. Otherwise, match the general art direction of a third-party kit without reproducing its elements one for one. If the user wants an exact copy of a purchased kit, say that its license decides this.
 
 Plan the element list using [references/prompts.md](references/prompts.md), split it into sheets, then tell the user the plan and the number of images it will generate. If wireframes come next, finalize the list after them, because they show which elements the screens need.
 
@@ -137,7 +165,7 @@ Run this whenever new art exists and references exist, including after **the fir
 py -3 <skill>/scripts/uikit.py compare ui_art/<kit>
 ```
 
-It compares each new element with `style/style_anchor.png`, `style/references/` and any imported sprites, on palette fit, lightness and saturation, then writes `compare_report.json` and `preview/compare.png`, which shows references and palette beside the elements with flagged ones in red. Derived states and disabled elements are skipped. Add `--ref <image>` for another reference and `--match "icons/*"` to narrow it.
+It compares each new element with the recorded `style/palette.json`, or without one, with `style/style_anchor.png`, `style/references/` and any imported sprites, on palette fit, lightness and saturation, then writes `compare_report.json` and `preview/compare.png`, which shows references and palette beside the elements with flagged ones in red. Derived states and disabled elements are skipped. Add `--ref <image>` for another reference and `--match "icons/*"` to narrow it.
 
 The numbers are only a screening aid and cannot judge shape, border style, material or lighting. **Always view `preview/compare.png`** and judge those yourself. A flag can be correct art, such as a red danger button in a kit with no red, so explain such cases rather than regenerating. A clean result does not prove the style matches.
 
@@ -159,7 +187,11 @@ py -3 <skill>/scripts/uikit.py mockup ui_art/<kit> --plan
 py -3 <skill>/scripts/uikit.py mockup ui_art/<kit>
 ```
 
-Name layouts `mockups/<screen>__v1.json` and so on, or `<screen>.json` when there is only one. When there is a reference, view it, measure positions in its pixels, set `size` to its size and set `reference`. Use short sample text in the user's language.
+Name layouts `mockups/<screen>__v1.json` and so on, or `<screen>.json` when there is only one. When there is a reference, view it, measure positions in its pixels, set `size` to its size and set `reference`.
+
+**Text.** Write in-game text in English unless the user names another language or the reference's text is in one. This is separate from the language you reply in. Add a label only where the meaning is not already clear, as the guide in [references/mockup.md](references/mockup.md) explains; a reference that labels everything does not oblige you to, unless the mode is `keep`.
+
+**Font.** Use the kit's font. If there is none, pick one following [references/fonts.md](references/fonts.md) before rendering, and report which. A `no font in the kit` warning means this step was missed.
 
 View each image in `preview/mockups/`, plus `<screen>_variants.png` and `<screen>_vs_reference.png` when present. Fix crowding, overlaps, wrong sizes and script warnings by editing the layout, which costs no quota, and render again. If a sprite does not fit its role, say so and offer to replace it. Check stretched sprites closely, especially at small sizes. If one looks bad, adjust `border_scale` or the size, draw bars with `fill`, and report what cannot be fixed by layout.
 

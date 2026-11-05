@@ -25,7 +25,7 @@ One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.js
 | `title` | Screen name shown in the flow and demo. |
 | `background` | Hex color, an element name, or an image path relative to the kit, stretched to fill the screen. |
 | `reference` | Image path relative to the kit. Also writes `<screen>_vs_reference.png`. |
-| `font` | Font file path for sample text. A common system font is used otherwise. |
+| `font` | Font file, relative to the kit or absolute. Defaults to the first file in the kit's `fonts/`, then a system font with a warning. |
 
 ## Item keys
 
@@ -55,6 +55,9 @@ Use this to judge your own work, and adapt it to the game's genre and the user's
 - Keep tappable items at least about 7 percent of the screen's short side, and clear of edges and notches.
 - Leave breathing room rather than filling every space, and move secondary actions into a menu when a screen is crowded.
 - Keep text short and readable. Add a dark plate or outline when it sits on busy art.
+- Label only what needs it. Universal icons such as settings, save, close, map, shop, jump and run need no caption. Keep text for values, such as currency, level and timers; for names the player must read, such as a mission; and for icons a new player could not guess. Fewer captions also mean larger icons.
+- Take colors from the kit's palette. Group by tone, and keep the same surface treatment across all controls of one rank, so the screen reads as one set. Reserve the strongest accent for the main action.
+- Follow the visual weight of the tone you chose. Light, translucent controls and heavy dark panels are different decisions, and mixing them looks wrong even if every color is on the palette.
 
 The `mockup` command warns about small tap targets, items too near the edge or off screen, and edges that almost align. It cannot judge beauty, so always view the result.
 

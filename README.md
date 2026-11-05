@@ -51,6 +51,7 @@ Gõ sau `$game-ui-kit`, ví dụ `$game-ui-kit /mockup 3 rearrange`. Codex khôn
 | Lệnh | Tác dụng |
 |---|---|
 | `/info` | Xem tình trạng kit và bước tiếp theo |
+| `/tone [auto\|game\|ref]` | Xem hoặc đổi nguồn tông màu. Mặc định `auto`: skill tự quyết định sau khi xem game và ref |
 | `/wireframe [x]` | Đề xuất `x` bố cục khung xám cho mỗi màn hình, kèm luồng |
 | `/mockup [x] [keep\|rearrange]` | Ghép `x` mẫu cho mỗi màn hình từ sprite thật, giữ bố cục hoặc để AI xếp lại |
 | `/choose <màn_hình> v<n>` | Chốt mẫu cho một màn hình |
