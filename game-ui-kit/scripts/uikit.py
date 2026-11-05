@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Turn UI sheets and loose sprites into a named kit with 9-slice data and checks.
 
-Commands: slice, import, nineslice, states, compare, mockup, qa. Run any of them with --help.
+Commands: slice, import, nineslice, states, compare, wireframe, mockup, choose, flow, export, info, qa.
+Run any of them with --help.
 Exit codes: 0 ok, 1 usage or input error, 2 result needs a fix (see output).
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
+import html
+import io
 import json
 import re
 import shutil
+import struct
 import sys
 import unicodedata
 from pathlib import Path
@@ -512,14 +517,24 @@ def stretch_band(image: np.ndarray, axis: int, tolerance: float, min_share: floa
 
 
 def render_nine_slice(img: Image.Image, border: dict, width: int, height: int,
-                      border_scale: float = 1.0) -> Image.Image:
+                      border_scale: float | None = None) -> Image.Image:
     w, h = img.size
     xs = [0, border["left"], w - border["right"], w]
     ys = [0, border["top"], h - border["bottom"], h]
-    # Shrink corners rather than let them overlap when the target is smaller than the borders.
     across = border["left"] + border["right"]
     down = border["top"] + border["bottom"]
-    scale = min(border_scale, width / across if across else border_scale, height / down if down else border_scale)
+    # A sprite cut on one axis scales normally on the other, so its end caps must follow that
+    # scale. Otherwise a bar squeezed to a third of its height keeps full-width, pointed caps.
+    if not down:
+        scale = height / h
+    elif not across:
+        scale = width / w
+    else:
+        scale = min(1.0, width / w, height / h)
+    if border_scale is not None:
+        scale = scale * border_scale if not (across and down) else border_scale
+    # Shrink corners rather than let them overlap when the target is smaller than the borders.
+    scale = min(scale, width / across if across else scale, height / down if down else scale)
     left, right = round(border["left"] * scale), round(border["right"] * scale)
     top, bottom = round(border["top"] * scale), round(border["bottom"] * scale)
     tx = [0, left, width - right, width]
@@ -565,6 +580,10 @@ def cmd_nineslice(args) -> int:
         if v_band:
             border["top"], border["bottom"] = v_band[0] + 1, h - v_band[1] - 1
         entry["nine_slice"] = {"status": "suggested", **border}
+        large = [side for side, used, total in (("width", border["left"] + border["right"], w),
+                                                ("height", border["top"] + border["bottom"], h))
+                 if used > total * 0.6]
+        entry["nine_slice"]["large_borders"] = large
         target_w = w * 2 if h_band else w
         target_h = h * 2 if v_band else h
         preview = on_checker(render_nine_slice(img, border, target_w, target_h))
@@ -609,11 +628,58 @@ def cmd_states(args) -> int:
     return 0
 
 
-LAYOUT_KEYS = {"size", "background", "reference", "font", "items"}
+LAYOUT_KEYS = {"size", "title", "background", "reference", "font", "items"}
 ITEM_KEYS = {"element", "text", "x", "y", "w", "h", "anchor", "mode", "border_scale", "opacity",
-             "text_color", "text_size", "text_stroke"}
+             "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label"}
 ANCHORS = {"top_left": (0, 0), "top": (0.5, 0), "top_right": (1, 0), "left": (0, 0.5), "center": (0.5, 0.5),
            "right": (1, 0.5), "bottom_left": (0, 1), "bottom": (0.5, 1), "bottom_right": (1, 1)}
+VARIANT_RE = re.compile(r"^(.+)__v(\d+)$")
+DEFAULT_SCREENS = ("home", "main_menu", "menu", "lobby", "hud")
+
+
+def screen_of(stem: str) -> str:
+    match = VARIANT_RE.match(stem)
+    return match.group(1) if match else stem
+
+
+def layout_sort_key(path: Path):
+    match = VARIANT_RE.match(path.stem)
+    return (screen_of(path.stem), int(match.group(2)) if match else 0)
+
+
+def layout_paths(kit: Path, screen: str | None = None) -> list[Path]:
+    paths = [p for p in (kit / "mockups").glob("*.json") if p.stem != "chosen"]
+    if screen:
+        paths = [p for p in paths if p.stem == screen or screen_of(p.stem) == screen]
+    return sorted(paths, key=layout_sort_key)
+
+
+def read_chosen(kit: Path) -> dict:
+    path = kit / "mockups" / "chosen.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def selected_layouts(kit: Path, screen: str | None = None, strict: bool = True) -> dict[str, Path]:
+    """Pick one layout per screen: the only one, or the chosen variant."""
+    grouped: dict[str, list[Path]] = {}
+    for path in layout_paths(kit, screen):
+        grouped.setdefault(screen_of(path.stem), []).append(path)
+    if not grouped:
+        die("NO_LAYOUT", f"no layouts for {screen or 'this kit'} in {kit / 'mockups'}", 1)
+    chosen, picked, undecided = read_chosen(kit), {}, {}
+    for name, paths in grouped.items():
+        match = [p for p in paths if p.stem == chosen.get(name)]
+        if match:
+            picked[name] = match[0]
+        elif len(paths) == 1:
+            picked[name] = paths[0]
+        elif strict:
+            undecided[name] = [p.stem for p in paths]
+        else:
+            picked[name] = paths[0]
+    if undecided:
+        die("NOT_CHOSEN", f"pick a variant first with the choose command: {undecided}")
+    return picked
 
 
 def load_font(size: int, path: str | None):
@@ -658,19 +724,20 @@ def read_layout(path: Path) -> dict:
             bad(f'{where}: needs "element" or "text"')
         if not is_number(item.get("x")) or not is_number(item.get("y")):
             bad(f'{where}: needs numeric "x" and "y"')
-        for key in ("w", "h", "text_size", "text_stroke", "border_scale", "opacity"):
+        for key in ("w", "h", "text_size", "text_stroke", "border_scale", "opacity", "fill"):
             if key in item and (not is_number(item[key]) or item[key] < 0 or (key in ("w", "h") and item[key] == 0)):
                 bad(f'{where}: "{key}" must be a positive number')
+        if "fill" in item and (item["fill"] > 1 or "w" not in item or "h" not in item):
+            bad(f'{where}: "fill" must be from 0 to 1 and needs "w" and "h"')
         if item.get("anchor", "top_left") not in ANCHORS:
             bad(f'{where}: anchor must be one of {sorted(ANCHORS)}')
         if item.get("mode", "auto") not in ("auto", "nine", "fit", "stretch"):
             bad(f'{where}: mode must be auto, nine, fit or stretch')
-        for key in ("text_color",):
-            if key in item:
-                try:
-                    ImageColor.getrgb(item[key])
-                except (ValueError, AttributeError):
-                    bad(f'{where}: "{key}" is not a color')
+        if "text_color" in item:
+            try:
+                ImageColor.getrgb(item["text_color"])
+            except (ValueError, AttributeError):
+                bad(f'{where}: "text_color" is not a color')
     return layout
 
 
@@ -678,108 +745,208 @@ def fit_sprite(img: Image.Image, entry: dict, item: dict, warn) -> tuple[Image.I
     """Size one sprite for its item. Return the image and its offset inside the item's box."""
     ew, eh = img.size
     w, h = item.get("w"), item.get("h")
+    label = item["element"]
     if w is None and h is None:
         return img, 0, 0
     if w is None or h is None:
         scale = (w / ew) if w is not None else (h / eh)
+        if scale > 1.5:
+            warn(f"{label}: enlarged {scale:.1f}x, may look soft")
         return img.resize((max(1, round(ew * scale)), max(1, round(eh * scale))), Image.LANCZOS), 0, 0
     w, h = max(1, round(w)), max(1, round(h))
     mode = item.get("mode", "auto")
     nine = entry.get("nine_slice") or {}
     ready = nine.get("status") == "suggested"
     if mode == "nine" and not ready:
-        warn(f"{item['element']}: asked for 9-slice but it has no usable borders, drawn with fit instead")
+        warn(f"{label}: asked for 9-slice but it has no usable borders, drawn with fit instead")
     if mode in ("auto", "nine") and ready:
-        return render_nine_slice(img, nine, w, h, item.get("border_scale", 1.0)), 0, 0
+        return render_nine_slice(img, nine, w, h, item.get("border_scale")), 0, 0
     if mode == "stretch":
         return img.resize((w, h), Image.LANCZOS), 0, 0
     scale = min(w / ew, h / eh)
+    if scale > 1.5:
+        warn(f"{label}: enlarged {scale:.1f}x, may look soft")
     size = (max(1, round(ew * scale)), max(1, round(eh * scale)))
     return img.resize(size, Image.LANCZOS), (w - size[0]) // 2, (h - size[1]) // 2
 
 
-def draw_text(canvas: Image.Image, item: dict, box, font_path, warn) -> None:
-    """Draw sample text centered in box, shrinking it to fit. Text is never part of a sprite."""
+def text_layer(size: tuple[int, int], item: dict, box, font_path, warn) -> Image.Image:
+    """Render sample text centered in box on its own transparent layer, shrinking it to fit."""
     x0, y0, x1, y1 = box
-    color = ImageColor.getrgb(item.get("text_color", "#FFFFFF"))
+    color = ImageColor.getrgb(item.get("text_color", "#FFFFFF"))[:3]
     stroke = round(item.get("text_stroke", 0))
-    size = round(item.get("text_size", max(12, (y1 - y0) * 0.45)))
-    draw = ImageDraw.Draw(canvas)
+    text_size = round(item.get("text_size", max(12, (y1 - y0) * 0.45)))
     text = str(item["text"])
     limit = (x1 - x0) * 0.9
-    font = load_font(size, font_path)
-    while draw.textlength(text, font=font) + stroke * 2 > limit and size > 8:
-        size -= 1
-        font = load_font(size, font_path)
-    if draw.textlength(text, font=font) + stroke * 2 > limit:
+    probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+    font = load_font(text_size, font_path)
+    while probe.textlength(text, font=font) + stroke * 2 > limit and text_size > 8:
+        text_size -= 1
+        font = load_font(text_size, font_path)
+    if probe.textlength(text, font=font) + stroke * 2 > limit:
         warn(f'text "{text}" does not fit its {round(x1 - x0)} px box')
-    luminance = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
-    outline = (20, 20, 20) if luminance > 128 else (245, 245, 245)
-    draw.text(((x0 + x1) / 2, (y0 + y1) / 2), text, font=font, fill=color, anchor="mm",
-              stroke_width=stroke, stroke_fill=outline)
+    center = ((x0 + x1) / 2, (y0 + y1) / 2)
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    if stroke:
+        # Masks keep soft edges clean; drawing color straight onto transparency darkens them.
+        luminance = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+        outline = (20, 20, 20) if luminance > 128 else (245, 245, 245)
+        mask = Image.new("L", size, 0)
+        ImageDraw.Draw(mask).text(center, text, font=font, fill=255, anchor="mm", stroke_width=stroke, stroke_fill=255)
+        layer = Image.merge("RGBA", [Image.new("L", size, c) for c in outline] + [mask])
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).text(center, text, font=font, fill=255, anchor="mm")
+    layer.alpha_composite(Image.merge("RGBA", [Image.new("L", size, c) for c in color] + [mask]))
+    return layer
+
+
+def prepare_fill(item: dict, entry: dict, warn) -> dict:
+    """Shorten a progress bar to its value, never below the width of its end caps."""
+    if "fill" not in item:
+        return item
+    nine = entry.get("nine_slice") or {}
+    if nine.get("status") != "suggested":
+        warn(f"{item['element']}: fill needs horizontal 9-slice, so the ends are stretched")
+        return {**item, "w": max(1, item["w"] * item["fill"]), "mode": "stretch"}
+    caps = (nine["left"] + nine["right"]) * item["h"] / entry["height"]
+    return {**item, "w": max(caps + 1, item["w"] * item["fill"])}
+
+
+def item_box(item: dict, native: tuple[int, int] | None, canvas: tuple[int, int]) -> tuple[int, int, int, int]:
+    width, height = item.get("w"), item.get("h")
+    if native and width is None and height is None:
+        width, height = native
+    elif native and width is None:
+        width = height * native[0] / native[1]
+    elif native and height is None:
+        height = width * native[1] / native[0]
+    if width is None:
+        width = 240 if item.get("element") else canvas[0]
+    if height is None:
+        height = width if item.get("element") and "w" in item else 80
+    width, height = max(1, round(width)), max(1, round(height))
+    ax, ay = ANCHORS[item.get("anchor", "top_left")]
+    x0, y0 = round(item["x"] - width * ax), round(item["y"] - height * ay)
+    return x0, y0, x0 + width, y0 + height
+
+
+def lint_layout(boxes: list[dict], size: tuple[int, int], warn) -> None:
+    """Flag layout problems a person would notice: small targets, cut-off items, near misses."""
+    width, height = size
+    short = min(size)
+    margin = round(short * 0.02)
+    for box in boxes:
+        x0, y0, x1, y1 = box["box"]
+        if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
+            warn(f"{box['name']}: entirely outside the {width}x{height} screen")
+        elif x0 < 0 or y0 < 0 or x1 > width or y1 > height:
+            warn(f"{box['name']}: extends outside the {width}x{height} screen")
+        elif box["touch"] and (x0 < margin or y0 < margin or x1 > width - margin or y1 > height - margin):
+            warn(f"{box['name']}: tappable item is within {margin} px of the screen edge")
+        if box["touch"] and min(x1 - x0, y1 - y0) < short * 0.07:
+            warn(f"{box['name']}: tappable item is small ({x1 - x0}x{y1 - y0})")
+    sprites = [b for b in boxes if b["sprite"]]
+    for i, a in enumerate(sprites):
+        for b in sprites[i + 1:]:
+            for edge, label in ((0, "left"), (1, "top"), (2, "right"), (3, "bottom")):
+                gap = abs(a["box"][edge] - b["box"][edge])
+                size_match = a["box"][2] - a["box"][0] == b["box"][2] - b["box"][0] or \
+                    a["box"][3] - a["box"][1] == b["box"][3] - b["box"][1]
+                if 1 <= gap <= 3 and size_match:
+                    warn(f"{a['name']} and {b['name']}: {label} edges are {gap} px apart, almost aligned")
+
+
+def build_layers(kit: Path, layout: dict, manifest: dict):
+    """Turn a layout into ordered layers. PNG mockups and PSD exports both draw from this."""
+    size = tuple(layout["size"])
+    width, height = size
+    warnings, missing, used, boxes, layers = [], [], [], [], []
+    warn = warnings.append
+    font_path = layout.get("font")
+
+    def add(image: Image.Image, name: str, group=None):
+        bbox = image.getbbox()
+        if bbox:
+            layers.append({"name": name, "group": group, "image": image.crop(bbox), "x": bbox[0], "y": bbox[1]})
+
+    background = layout.get("background")
+    if background is None:
+        background = "#282C34"
+    if isinstance(background, str) and background.startswith("#"):
+        try:
+            add(Image.new("RGBA", size, ImageColor.getrgb(background)[:3] + (255,)), "Background")
+        except ValueError:
+            die("BAD_LAYOUT", "background is not a color", 1)
+    else:
+        file = None
+        if background in manifest["elements"]:
+            used.append(background)
+            file = kit / manifest["elements"][background]["file"]
+        elif (kit / str(background)).is_file():
+            file = kit / str(background)
+        if file:
+            add(Image.open(file).convert("RGBA").resize(size, Image.LANCZOS), "Background")
+        else:
+            missing.append(str(background))
+            add(Image.new("RGBA", size, (40, 44, 52, 255)), "Background")
+
+    for item in layout["items"]:
+        name, group = item.get("element"), item.get("group")
+        entry = manifest["elements"].get(name) if name else None
+        sprite, offset_x, offset_y = None, 0, 0
+        if entry:
+            used.append(name)
+            item = prepare_fill(item, entry, warn)
+            source = Image.open(kit / entry["file"]).convert("RGBA")
+            sprite, offset_x, offset_y = fit_sprite(source, entry, item, warn)
+            if "w" in item and "h" in item:
+                native = None
+            else:
+                native = sprite.size
+            box = item_box({**item, "w": sprite.width, "h": sprite.height} if native else item, None, size)
+        else:
+            if name:
+                missing.append(name)
+            box = item_box(item, None, size)
+        x0, y0, x1, y1 = box
+        label = name or str(item.get("text"))
+        boxes.append({"name": label, "box": box, "sprite": bool(sprite),
+                      "touch": "goto" in item or bool(name and "_normal" in name)})
+        if sprite is not None:
+            if item.get("opacity", 1) < 1:
+                sprite = sprite.copy()
+                sprite.putalpha(sprite.getchannel("A").point(lambda a: round(a * item["opacity"])))
+            layer = Image.new("RGBA", size, (0, 0, 0, 0))
+            layer.paste(sprite, (x0 + offset_x, y0 + offset_y))
+            add(layer, name.split("/")[-1], group)
+        elif name:
+            layer = Image.new("RGBA", size, (0, 0, 0, 0))
+            draw = ImageDraw.Draw(layer)
+            draw.rectangle([x0, y0, x1, y1], fill=(255, 0, 80, 70), outline=(255, 0, 80, 255), width=3)
+            draw.text((x0 + 6, y0 + 6), f"MISSING {name}", fill=(255, 255, 255, 255), font=load_font(16, font_path))
+            add(layer, f"MISSING {name}", group)
+        if "text" in item:
+            add(text_layer(size, item, box, font_path, warn), f"Text: {item['text']}", group)
+    lint_layout(boxes, size, warn)
+    return layers, warnings, sorted(set(missing)), sorted(set(used))
+
+
+def flatten(layers: list[dict], size: tuple[int, int]) -> Image.Image:
+    canvas = Image.new("RGBA", size, (0, 0, 0, 255))
+    for layer in layers:
+        canvas.alpha_composite(layer["image"], (layer["x"], layer["y"]))
+    return canvas.convert("RGB")
 
 
 def render_mockup(kit: Path, path: Path, manifest: dict) -> dict:
     layout = read_layout(path)
     width, height = layout["size"]
-    warnings, missing, used = [], [], []
-    warn = warnings.append
-    canvas = Image.new("RGBA", (width, height), (40, 44, 52, 255))
-
-    background = layout.get("background")
-    if isinstance(background, str) and background.startswith("#"):
-        try:
-            canvas = Image.new("RGBA", (width, height), ImageColor.getrgb(background) + (255,))
-        except ValueError:
-            die("BAD_LAYOUT", f"{path.name}: background is not a color", 1)
-    elif isinstance(background, str):
-        if background in manifest["elements"]:
-            used.append(background)
-            source = Image.open(kit / manifest["elements"][background]["file"]).convert("RGBA")
-            canvas.alpha_composite(source.resize((width, height), Image.LANCZOS))
-        else:
-            missing.append(background)
-
-    font_path = layout.get("font")
-    for item in layout["items"]:
-        ax, ay = ANCHORS[item.get("anchor", "top_left")]
-        name = item.get("element")
-        sprite, offset_x, offset_y = None, 0, 0
-        if name is not None:
-            if name in manifest["elements"]:
-                used.append(name)
-                source = Image.open(kit / manifest["elements"][name]["file"]).convert("RGBA")
-                sprite, offset_x, offset_y = fit_sprite(source, manifest["elements"][name], item, warn)
-            else:
-                missing.append(name)
-
-        if sprite is not None:
-            box_w = round(item["w"]) if "w" in item and "h" in item else sprite.width
-            box_h = round(item["h"]) if "w" in item and "h" in item else sprite.height
-        else:
-            box_w, box_h = round(item.get("w", 240 if name else width)), round(item.get("h", 80))
-        x0, y0 = round(item["x"] - box_w * ax), round(item["y"] - box_h * ay)
-        if x0 < 0 or y0 < 0 or x0 + box_w > width or y0 + box_h > height:
-            warn(f"{name or item.get('text')}: extends outside the {width}x{height} screen")
-
-        if sprite is not None:
-            if item.get("opacity", 1) < 1:
-                sprite = sprite.copy()
-                sprite.putalpha(sprite.getchannel("A").point(lambda a: round(a * item["opacity"])))
-            layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-            layer.paste(sprite, (x0 + offset_x, y0 + offset_y))
-            canvas.alpha_composite(layer)
-        elif name is not None:
-            draw = ImageDraw.Draw(canvas)
-            draw.rectangle([x0, y0, x0 + box_w, y0 + box_h], fill=(255, 0, 80, 70), outline=(255, 0, 80), width=3)
-            draw.text((x0 + 6, y0 + 6), f"MISSING {name}", fill=(255, 255, 255), font=load_font(16, font_path))
-        if "text" in item:
-            draw_text(canvas, item, (x0, y0, x0 + box_w, y0 + box_h), font_path, warn)
-
+    layers, warnings, missing, used = build_layers(kit, layout, manifest)
+    image = flatten(layers, (width, height))
     out_dir = kit / "preview" / "mockups"
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / f"{path.stem}.png"
-    canvas.convert("RGB").save(out)
+    image.save(out)
 
     compared = None
     if layout.get("reference"):
@@ -789,32 +956,71 @@ def render_mockup(kit: Path, path: Path, manifest: dict) -> dict:
             ref = ref.resize((max(1, round(ref.width * height / ref.height)), height), Image.LANCZOS)
             pair = Image.new("RGB", (ref.width + 24 + width, height), (245, 245, 245))
             pair.paste(ref, (0, 0))
-            pair.paste(canvas.convert("RGB"), (ref.width + 24, 0))
+            pair.paste(image, (ref.width + 24, 0))
             compared = out_dir / f"{path.stem}_vs_reference.png"
             pair.save(compared)
         else:
-            warn(f"reference not found: {layout['reference']}")
+            warnings.append(f"reference not found: {layout['reference']}")
 
     return {"image": out.relative_to(kit).as_posix(),
             "versus_reference": compared.relative_to(kit).as_posix() if compared else None,
-            "items": len(layout["items"]), "missing": sorted(set(missing)), "warnings": warnings,
-            "used": sorted(set(used))}
+            "items": len(layout["items"]), "layers": len(layers), "missing": missing,
+            "warnings": warnings, "used": used}
+
+
+def variants_board(kit: Path, screen: str, stems: list[str]) -> Path:
+    """Place a screen's variants side by side, labeled for choosing."""
+    thumbs = []
+    for stem in stems:
+        image = Image.open(kit / "preview" / "mockups" / f"{stem}.png").convert("RGB")
+        image.thumbnail((640, 640))
+        thumbs.append((stem, image))
+    width = sum(t.width for _, t in thumbs) + 16 * (len(thumbs) + 1)
+    height = max(t.height for _, t in thumbs) + 56
+    board = Image.new("RGB", (width, height), (245, 245, 245))
+    draw = ImageDraw.Draw(board)
+    x = 16
+    for stem, thumb in thumbs:
+        match = VARIANT_RE.match(stem)
+        draw.text((x, 12), f"v{match.group(2)}" if match else stem, fill=(20, 20, 20), font=load_font(24, None))
+        board.paste(thumb, (x, 44))
+        x += thumb.width + 16
+    out = kit / "preview" / "mockups" / f"{screen}_variants.png"
+    board.save(out)
+    return out
+
+
+def plan_text(paths: list[Path]) -> str:
+    counts: dict[str, int] = {}
+    for path in paths:
+        counts[screen_of(path.stem)] = counts.get(screen_of(path.stem), 0) + 1
+    detail = ", ".join(f"{name} x{count}" for name, count in counts.items())
+    return f"{len(paths)} mockups across {len(counts)} screens: {detail}"
 
 
 def cmd_mockup(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
-    folder = kit / "mockups"
-    paths = [folder / f"{args.screen}.json"] if args.screen else sorted(folder.glob("*.json"))
-    if not paths or not all(p.exists() for p in paths):
-        die("NO_LAYOUT", f"write a layout in {folder} first", 1)
+    paths = layout_paths(kit, args.screen)
+    if not paths:
+        die("NO_LAYOUT", f"write a layout in {kit / 'mockups'} first", 1)
     # Validate everything first, so one bad layout does not leave a partial set of images.
     for path in paths:
         read_layout(path)
+    print(f"Planned: {plan_text(paths)}. No image generation is used.")
+    if args.plan:
+        return 0
     screens = {path.stem: render_mockup(kit, path, manifest) for path in paths}
+    boards = {}
+    grouped: dict[str, list[str]] = {}
+    for path in paths:
+        grouped.setdefault(screen_of(path.stem), []).append(path.stem)
+    for screen, stems in grouped.items():
+        if len(stems) > 1:
+            boards[screen] = variants_board(kit, screen, stems).relative_to(kit).as_posix()
     used = {name for screen in screens.values() for name in screen["used"]}
     unused = [n for n, e in manifest["elements"].items() if n not in used and not e.get("derived_from")]
-    report = {"screens": screens, "unused_elements": unused}
+    report = {"count": len(screens), "screens": screens, "variant_boards": boards, "unused_elements": unused}
     (kit / "mockup_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     for name, screen in screens.items():
         print(f"{name}: {screen['image']}, {screen['items']} items, {len(screen['missing'])} missing, "
@@ -823,8 +1029,392 @@ def cmd_mockup(args) -> int:
             print(f"  MISSING_ELEMENT: {element}")
         for warning in screen["warnings"]:
             print(f"  warning: {warning}".encode("ascii", "replace").decode())
-    print(f"{len(unused)} elements not used in any mockup.")
+    for screen, board in boards.items():
+        print(f"Variants of {screen}: {board}")
+    print(f"Rendered {len(screens)} mockups. {len(unused)} elements not used in any mockup.")
     return 2 if any(screen["missing"] for screen in screens.values()) else 0
+
+
+def cmd_choose(args) -> int:
+    kit = Path(args.kit)
+    variant = args.variant if args.variant.startswith(args.screen) else f"{args.screen}__{args.variant}"
+    options = [p.stem for p in layout_paths(kit, args.screen)]
+    if variant not in options:
+        die("NOT_FOUND", f"{variant} is not one of {options}", 1)
+    chosen = read_chosen(kit)
+    chosen[args.screen] = variant
+    (kit / "mockups" / "chosen.json").write_text(json.dumps(chosen, indent=2), encoding="utf-8")
+    print(f"{args.screen}: chose {variant}")
+    return 0
+
+
+def render_wireframe(kit: Path, path: Path, manifest: dict) -> Path:
+    layout = read_layout(path)
+    size = tuple(layout["size"])
+    image = Image.new("RGB", size, (236, 238, 242))
+    draw = ImageDraw.Draw(image)
+    scale = min(size) / 500
+    label_font = load_font(max(11, round(13 * scale)), layout.get("font"))
+    for item in layout["items"]:
+        name = item.get("element")
+        entry = manifest["elements"].get(name) if name else None
+        native = (entry["width"], entry["height"]) if entry and entry.get("width") else None
+        x0, y0, x1, y1 = item_box(item, native, size)
+        label = item.get("label") or item.get("text") or (name.split("/")[-1] if name else "")
+        if name:
+            link = "goto" in item
+            draw.rectangle([x0, y0, x1, y1], fill=(214, 218, 226), outline=(40, 90, 220) if link else (110, 116, 130),
+                           width=max(2, round(2 * scale)) if link else 1)
+            if "text" not in item and x1 - x0 > 30 and y1 - y0 > 30:
+                draw.line([x0, y0, x1, y1], fill=(186, 190, 200))
+                draw.line([x0, y1, x1, y0], fill=(186, 190, 200))
+        if link_target := item.get("goto"):
+            label = f"{label} > {link_target}"
+        if label:
+            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), str(label), font=label_font, fill=(30, 34, 44), anchor="mm")
+    out = kit / "preview" / "wireframes" / f"{path.stem}.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    image.save(out)
+    return out
+
+
+def cmd_wireframe(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    paths = layout_paths(kit, args.screen)
+    if not paths:
+        die("NO_LAYOUT", f"write a layout in {kit / 'mockups'} first", 1)
+    for path in paths:
+        read_layout(path)
+    print(f"Planned: {plan_text(paths)} as wireframes. No image generation is used.")
+    for path in paths:
+        print(render_wireframe(kit, path, manifest).relative_to(kit).as_posix())
+    return 0
+
+
+DEMO_HTML = """<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;background:#14161b;color:#eceef2;font:15px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;height:100vh}
+header{display:flex;gap:8px;align-items:center;padding:8px 12px;flex-wrap:wrap}
+#name{font-weight:600;margin-right:auto}
+button{background:#2a2e37;color:inherit;border:1px solid #454b58;border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:0 12px 12px}
+#stage{position:relative;max-width:100%;max-height:100%}
+#stage img{display:block;max-width:100%;max-height:calc(100vh - 70px)}
+.hot{position:absolute;background:transparent;border:0;border-radius:4px;padding:0}
+.show .hot{outline:2px solid #4c8dff;background:#4c8dff33}
+</style></head><body>
+<header><span id="name"></span><button id="back">Quay lại</button><button id="restart">Từ đầu</button><button id="hints">Hiện vùng bấm</button></header>
+<main><div id="stage"><img id="shot" alt=""></div></main>
+<script>
+const DATA=__DATA__;
+const stage=document.getElementById("stage"),shot=document.getElementById("shot"),nameBox=document.getElementById("name"),backBtn=document.getElementById("back");
+let trail=[];
+function show(id,remember){
+  const s=DATA.screens[id];if(!s)return;
+  if(remember&&DATA.current)trail.push(DATA.current);
+  DATA.current=id;shot.src=s.image;shot.alt=s.title;nameBox.textContent=s.title;backBtn.disabled=!trail.length;
+  stage.querySelectorAll(".hot").forEach(e=>e.remove());
+  for(const h of s.links){
+    const b=document.createElement("button");b.className="hot";b.title=h.label;b.setAttribute("aria-label",h.label);
+    b.style.left=h.x+"%";b.style.top=h.y+"%";b.style.width=h.w+"%";b.style.height=h.h+"%";
+    b.onclick=()=>h.to==="back"?goBack():show(h.to,true);stage.appendChild(b);
+  }
+}
+function goBack(){if(trail.length){const id=trail.pop();show(id,false);backBtn.disabled=!trail.length;}}
+backBtn.onclick=goBack;
+document.getElementById("restart").onclick=()=>{trail=[];show(DATA.start,false);};
+document.getElementById("hints").onclick=()=>stage.classList.toggle("show");
+show(DATA.start,false);
+</script></body></html>
+"""
+
+
+def flow_graph(layouts: dict[str, dict], manifest: dict) -> list[dict]:
+    edges = []
+    for screen, layout in layouts.items():
+        size = tuple(layout["size"])
+        for item in layout["items"]:
+            if "goto" not in item:
+                continue
+            name = item.get("element")
+            entry = manifest["elements"].get(name) if name else None
+            native = (entry["width"], entry["height"]) if entry and entry.get("width") else None
+            box = item_box(item, native, size)
+            label = item.get("label") or item.get("text") or (name.split("/")[-1] if name else item["goto"])
+            edges.append({"from": screen, "to": item["goto"], "label": str(label), "box": box})
+    return edges
+
+
+def flow_board(images: dict[str, Image.Image], levels: dict[str, int], edges: list[dict], titles: dict[str, str],
+               cell=(320, 240)) -> Image.Image:
+    columns: dict[int, list[str]] = {}
+    for name in images:
+        columns.setdefault(levels.get(name, max(levels.values(), default=0) + 1), []).append(name)
+    order = sorted(columns)
+    rows = max(len(names) for names in columns.values())
+    gap_x, gap_y, top = 110, 56, 20
+    board = Image.new("RGB", (len(order) * (cell[0] + gap_x) + 30, rows * (cell[1] + gap_y) + top + 20), (245, 246, 248))
+    draw = ImageDraw.Draw(board)
+    font = load_font(16, None)
+    small = load_font(13, None)
+    spots = {}
+    for c, level in enumerate(order):
+        for r, name in enumerate(columns[level]):
+            x, y = 20 + c * (cell[0] + gap_x), top + r * (cell[1] + gap_y)
+            thumb = images[name].copy()
+            thumb.thumbnail(cell)
+            board.paste(thumb, (x, y + 24))
+            draw.text((x, y), titles.get(name, name), fill=(20, 20, 20), font=font)
+            spots[name] = (x, y + 24, x + thumb.width, y + 24 + thumb.height)
+    for edge in edges:
+        if edge["to"] not in spots or edge["to"] == edge["from"]:
+            continue
+        a, b = spots[edge["from"]], spots[edge["to"]]
+        forward = a[2] <= b[0]
+        start = (a[2], (a[1] + a[3]) // 2) if forward else (a[0], (a[1] + a[3]) // 2 + 14)
+        end = (b[0], (b[1] + b[3]) // 2) if forward else (b[2], (b[1] + b[3]) // 2 + 14)
+        color = (40, 90, 220) if forward else (150, 90, 200)
+        draw.line([start, end], fill=color, width=2)
+        vector = np.array(end, dtype=float) - np.array(start, dtype=float)
+        length = max(1.0, float(np.hypot(*vector)))
+        unit = vector / length
+        side = np.array([-unit[1], unit[0]])
+        tip = np.array(end, dtype=float)
+        draw.polygon([tuple(tip), tuple(tip - unit * 10 + side * 5), tuple(tip - unit * 10 - side * 5)], fill=color)
+        middle = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2 - 10)
+        draw.text(middle, edge["label"][:22], fill=color, font=small, anchor="mm", stroke_width=2, stroke_fill=(245, 246, 248))
+    return board
+
+
+def cmd_flow(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    picked = selected_layouts(kit, strict=False)
+    layouts = {name: read_layout(path) for name, path in picked.items()}
+    start = args.start or next((n for n in DEFAULT_SCREENS if n in layouts), next(iter(layouts)))
+    if start not in layouts:
+        die("NOT_FOUND", f"start screen {start} is not one of {sorted(layouts)}", 1)
+    edges = flow_graph(layouts, manifest)
+
+    levels, queue = {start: 0}, [start]
+    while queue:
+        current = queue.pop(0)
+        for edge in edges:
+            if edge["from"] == current and edge["to"] in layouts and edge["to"] not in levels:
+                levels[edge["to"]] = levels[current] + 1
+                queue.append(edge["to"])
+    broken = [f"{e['from']} > {e['to']} ({e['label']})" for e in edges if e["to"] != "back" and e["to"] not in layouts]
+    unreachable = [n for n in layouts if n not in levels]
+    dead_ends = [n for n in layouts if not any(e["from"] == n for e in edges)]
+
+    images, screens = {}, {}
+    missing = set()
+    for name, path in picked.items():
+        if args.wireframe:
+            image = Image.open(render_wireframe(kit, path, manifest)).convert("RGB")
+        else:
+            result = render_mockup(kit, path, manifest)
+            missing |= set(result["missing"])
+            image = Image.open(kit / result["image"]).convert("RGB")
+        images[name] = image
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=90)
+        width, height = image.size
+        links = [{"x": round(e["box"][0] / width * 100, 3), "y": round(e["box"][1] / height * 100, 3),
+                  "w": round((e["box"][2] - e["box"][0]) / width * 100, 3),
+                  "h": round((e["box"][3] - e["box"][1]) / height * 100, 3),
+                  "to": e["to"], "label": e["label"]}
+                 for e in edges if e["from"] == name and (e["to"] in layouts or e["to"] == "back")]
+        screens[name] = {"title": layouts[name].get("title", name), "links": links,
+                         "image": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")}
+
+    titles = {n: layouts[n].get("title", n) for n in layouts}
+    board = flow_board(images, levels, edges, titles)
+    flow_out = kit / "preview" / "flow.png"
+    flow_out.parent.mkdir(parents=True, exist_ok=True)
+    board.save(flow_out)
+
+    data = json.dumps({"start": start, "screens": screens}, ensure_ascii=False).replace("</", "<\\/")
+    demo = kit / "demo" / "index.html"
+    demo.parent.mkdir(parents=True, exist_ok=True)
+    title = html.escape(kit.resolve().name)
+    demo.write_text(DEMO_HTML.replace("__TITLE__", title).replace("__DATA__", data), encoding="utf-8")
+
+    report = {"start": start, "screens": sorted(layouts), "links": len(edges), "broken_links": broken,
+              "unreachable": unreachable, "dead_ends": dead_ends, "missing_elements": sorted(missing),
+              "uses_first_variant": [n for n in picked if len(layout_paths(kit, n)) > 1 and n not in read_chosen(kit)],
+              "board": "preview/flow.png", "demo": "demo/index.html"}
+    (kit / "flow_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(json.dumps(report, indent=2, ensure_ascii=True))
+    return 2 if broken else 0
+
+
+def psd_block(key: bytes, data: bytes) -> bytes:
+    data += b"\0" * (-len(data) % 4)
+    return b"8BIM" + key + struct.pack(">I", len(data)) + data
+
+
+def psd_record(name: str, layer: dict | None, section: int | None = None, hidden: bool = False):
+    """Build one PSD layer record and its channel data."""
+    encoded = name.encode("ascii", "replace")[:31]
+    pascal = bytes([len(encoded)]) + encoded
+    pascal += b"\0" * (-len(pascal) % 4)
+    unicode_name = struct.pack(">I", len(name)) + name.encode("utf-16-be")
+    blocks = psd_block(b"luni", unicode_name)
+    if section is not None:
+        blocks += psd_block(b"lsct", struct.pack(">I", section) + b"8BIM" + (b"pass" if section == 1 else b"norm"))
+    extra = struct.pack(">II", 0, 0) + pascal + blocks
+
+    if layer is None:
+        top = left = bottom = right = 0
+        channels = [b"", b"", b"", b""]
+    else:
+        pixels = np.asarray(layer["image"].convert("RGBA"))
+        top, left = layer["y"], layer["x"]
+        bottom, right = top + pixels.shape[0], left + pixels.shape[1]
+        channels = [pixels[..., 3].tobytes(), pixels[..., 0].tobytes(), pixels[..., 1].tobytes(), pixels[..., 2].tobytes()]
+    record = struct.pack(">iiiiH", top, left, bottom, right, 4)
+    for channel_id, channel in zip((-1, 0, 1, 2), channels):
+        record += struct.pack(">hI", channel_id, len(channel) + 2)
+    flags = 0x08 | (0x10 if section is not None else 0) | (0x02 if hidden else 0)
+    record += b"8BIM" + b"norm" + struct.pack(">BBBB", 255, 0, flags, 0)
+    record += struct.pack(">I", len(extra)) + extra
+    data = b"".join(struct.pack(">H", 0) + channel for channel in channels)
+    return record, data
+
+
+def write_psd(path: Path, size: tuple[int, int], layers: list[dict], merged: Image.Image) -> int:
+    """Write an 8-bit RGB PSD with named layers and groups. Layer order is bottom to top."""
+    records = []
+    current = None
+    for layer in layers + [None]:
+        group = layer.get("group") if layer else None
+        if current and group != current:
+            records.append(psd_record(current, None, section=1))
+        if group and group != current:
+            records.append(psd_record("</Layer group>", None, section=3))
+        current = group
+        if layer:
+            records.append(psd_record(layer["name"], layer, hidden=layer.get("hidden", False)))
+    body = struct.pack(">h", len(records)) + b"".join(r for r, _ in records) + b"".join(d for _, d in records)
+    body += b"\0" * (len(body) % 2)
+    layer_info = struct.pack(">I", len(body)) + body
+    layer_mask = layer_info + struct.pack(">I", 0)
+    width, height = size
+    planes = np.asarray(merged.convert("RGB"))
+    with open(path, "wb") as out:
+        out.write(b"8BPS" + struct.pack(">H", 1) + b"\0" * 6 + struct.pack(">HIIHH", 3, height, width, 8, 3))
+        out.write(struct.pack(">I", 0) + struct.pack(">I", 0))
+        out.write(struct.pack(">I", len(layer_mask)) + layer_mask)
+        out.write(struct.pack(">H", 0))
+        for channel in range(3):
+            out.write(planes[..., channel].tobytes())
+    return len(records)
+
+
+def cmd_export(args) -> int:
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    picked = selected_layouts(kit, args.screen)
+    built = {}
+    for screen, path in picked.items():
+        layout = read_layout(path)
+        layers, warnings, missing, _ = build_layers(kit, layout, manifest)
+        if missing:
+            die("MISSING_ELEMENT", f"{screen} uses missing elements {missing}. Fix the layout before exporting.")
+        built[screen] = (layout, layers, warnings)
+
+    psd_dir, png_dir = kit / "export" / "psd", kit / "export" / "png"
+    targets = [psd_dir / f"{s}.psd" for s in built] + [png_dir / f"{s}.png" for s in built]
+    existing = [t.name for t in targets if t.exists()]
+    if existing and not args.force:
+        die("EXISTS", f"{existing} already exist. Pass --force only if replacing them was requested.", 1)
+    psd_dir.mkdir(parents=True, exist_ok=True)
+    png_dir.mkdir(parents=True, exist_ok=True)
+
+    report = {}
+    for screen, (layout, layers, warnings) in built.items():
+        size = tuple(layout["size"])
+        merged = flatten(layers, size)
+        merged.save(png_dir / f"{screen}.png")
+        full = list(layers)
+        reference = kit / layout["reference"] if layout.get("reference") else None
+        if reference and reference.exists():
+            image = Image.open(reference).convert("RGBA").resize(size, Image.LANCZOS)
+            full.insert(0, {"name": "Reference (hidden)", "image": image, "x": 0, "y": 0, "hidden": True, "group": None})
+        count = write_psd(psd_dir / f"{screen}.psd", size, full, merged)
+        texts = sum(1 for layer in layers if layer["name"].startswith("Text: "))
+        report[screen] = {"psd": f"export/psd/{screen}.psd", "png": f"export/png/{screen}.png",
+                          "layout": picked[screen].stem, "layers": count, "text_layers_as_pixels": texts,
+                          "warnings": warnings}
+        print(f"{screen}: export/psd/{screen}.psd from {picked[screen].stem}, {count} layers, "
+              f"{texts} text layers as pixels, {len(warnings)} warnings")
+    (kit / "export" / "export_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Exported {len(report)} screens. Text layers are pixels, not editable type.")
+    return 0
+
+
+def cmd_info(args) -> int:
+    kit = Path(args.kit)
+    if not (kit / "manifest.json").exists() and not (kit / "mockups").exists():
+        die("NOT_FOUND", f"{kit} is not a kit yet", 1)
+    manifest = load_manifest(kit)
+    elements = manifest["elements"]
+    families: dict[str, int] = {}
+    for name in elements:
+        family = name.split("/")[0] if "/" in name else "(root)"
+        families[family] = families.get(family, 0) + 1
+    nine = {"suggested": 0, "needs_review": 0}
+    for entry in elements.values():
+        status = (entry.get("nine_slice") or {}).get("status")
+        if status in nine:
+            nine[status] += 1
+    def read(name):
+        path = kit / name
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    qa, compare = read("qa_report.json"), read("compare_report.json")
+    chosen = read_chosen(kit)
+    screens: dict[str, list[str]] = {}
+    for path in layout_paths(kit):
+        screens.setdefault(screen_of(path.stem), []).append(path.stem)
+    undecided = [s for s, stems in screens.items() if len(stems) > 1 and s not in chosen]
+    exports = sorted(p.stem for p in (kit / "export" / "psd").glob("*.psd"))
+
+    if not elements:
+        step = "Create or import the art."
+    elif not screens:
+        step = "Propose layouts: /wireframe, then /mockup."
+    elif undecided:
+        step = f"Choose a variant for {undecided} with /choose, then /export."
+    elif qa is None or qa["errors"]:
+        step = "Run QA and fix any errors."
+    elif len(exports) < len(screens):
+        step = "When the screens are approved, run /export."
+    else:
+        step = "Everything is exported."
+    info = {
+        "kit": kit.resolve().name,
+        "elements": {"total": len(elements), "families": dict(sorted(families.items())),
+                     "generated": sum(1 for e in elements.values() if not e.get("imported_from") and not e.get("derived_from")),
+                     "imported": sum(1 for e in elements.values() if e.get("imported_from") and not e.get("derived_from")),
+                     "derived_states": sum(1 for e in elements.values() if e.get("derived_from"))},
+        "nine_slice": nine,
+        "screens": {s: {"mockups": len(stems), "chosen": chosen.get(s) or (stems[0] if len(stems) == 1 else None)}
+                    for s, stems in screens.items()},
+        "total_mockups": sum(len(stems) for stems in screens.values()),
+        "qa": {"errors": len(qa["errors"]), "warnings": len(qa["warnings"])} if qa else "not run",
+        "compare": {"review": len(compare["review"])} if compare else "not run",
+        "flow_demo": (kit / "demo" / "index.html").exists(),
+        "exported_psd": exports,
+        "next_step": step,
+    }
+    print(json.dumps(info, indent=2, ensure_ascii=True))
+    return 0
 
 
 def contact_sheet(kit: Path, manifest: dict, cell: int = 170, columns: int = 6) -> Path:
@@ -880,6 +1470,9 @@ def cmd_qa(args) -> int:
         nine = entry.get("nine_slice")
         if nine and nine.get("status") == "needs_review":
             warnings.append(f"{name}: 9-slice needs review")
+        if nine and nine.get("large_borders") and not entry.get("derived_from"):
+            warnings.append(f"{name}: 9-slice corners take most of its {' and '.join(nine['large_borders'])}, "
+                            "so it only suits sizes near the original")
         if entry.get("has_transparency") is False:
             warnings.append(f"{name}: imported without transparency")
         if STATE_RE.search(name):
@@ -965,10 +1558,38 @@ def main() -> int:
     p.add_argument("--force", action="store_true", help="Replace existing derived files")
     p.set_defaults(func=cmd_states)
 
+    p = commands.add_parser("wireframe", help="Draw layouts as gray boxes, before or without art")
+    p.add_argument("kit")
+    p.add_argument("--screen", help="One screen or variant; defaults to all layouts")
+    p.set_defaults(func=cmd_wireframe)
+
     p = commands.add_parser("mockup", help="Assemble preview screens from the kit's sprites using layout files")
     p.add_argument("kit")
-    p.add_argument("--screen", help="Render only mockups/<screen>.json; defaults to all layouts")
+    p.add_argument("--screen", help="One screen or variant; defaults to all layouts")
+    p.add_argument("--plan", action="store_true", help="Only report how many mockups would be made")
     p.set_defaults(func=cmd_mockup)
+
+    p = commands.add_parser("choose", help="Record the approved variant of a screen")
+    p.add_argument("kit")
+    p.add_argument("screen")
+    p.add_argument("variant", help="For example v2")
+    p.set_defaults(func=cmd_choose)
+
+    p = commands.add_parser("flow", help="Draw the screen flow and build a clickable HTML demo")
+    p.add_argument("kit")
+    p.add_argument("--start", help="First screen of the demo")
+    p.add_argument("--wireframe", action="store_true", help="Use wireframes instead of mockups")
+    p.set_defaults(func=cmd_flow)
+
+    p = commands.add_parser("export", help="Write layered PSD and flat PNG files for approved screens")
+    p.add_argument("kit")
+    p.add_argument("--screen", help="One screen; defaults to all")
+    p.add_argument("--force", action="store_true", help="Replace existing exports")
+    p.set_defaults(func=cmd_export)
+
+    p = commands.add_parser("info", help="Show the kit's status and the next step")
+    p.add_argument("kit")
+    p.set_defaults(func=cmd_info)
 
     p = commands.add_parser("qa", help="Check the kit and build the contact sheet")
     p.add_argument("kit")

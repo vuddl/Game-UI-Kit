@@ -44,10 +44,17 @@ Tạo thêm phần còn thiếu:
 $game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu cho màn hình shop và đối chiếu với kit.
 ```
 
-Ghép thử màn hình từ kit, không tạo ảnh mới:
+## Lệnh
 
-```text
-$game-ui-kit Ghép mockup màn hình shop và HUD từ kit ở D:\duong_dan\kit, theo bố cục ảnh D:\duong_dan\shop.png.
-```
+Gõ sau `$game-ui-kit`, ví dụ `$game-ui-kit /mockup 3 rearrange`. Codex không cho skill tạo lệnh `/` riêng, nên phải có tên skill ở đầu. Các lệnh này không tạo ảnh AI nên không tốn hạn mức.
 
-Kết quả nằm trong `ui_art/<tên_kit>/`, với sprite ở `elements/` và mockup ở `preview/mockups/`. Mockup chỉ là ảnh xem trước, chưa phải màn hình dựng trong game engine.
+| Lệnh | Tác dụng |
+|---|---|
+| `/info` | Xem tình trạng kit và bước tiếp theo |
+| `/wireframe [x]` | Đề xuất `x` bố cục khung xám cho mỗi màn hình, kèm luồng |
+| `/mockup [x] [keep\|rearrange]` | Ghép `x` mẫu cho mỗi màn hình từ sprite thật, giữ bố cục hoặc để AI xếp lại |
+| `/choose <màn_hình> v<n>` | Chốt mẫu cho một màn hình |
+| `/flow` | Vẽ sơ đồ luồng và tạo demo bấm thử |
+| `/export [màn_hình]` | Xuất PSD có layer và PNG cho màn hình đã chốt |
+
+Kết quả nằm trong `ui_art/<tên_kit>/`: sprite ở `elements/`, mockup ở `preview/mockups/`, demo ở `demo/index.html`, file xuất ở `export/`. Mockup và PSD chưa phải màn hình dựng trong game engine. Chữ trong PSD là layer ảnh, chưa sửa nội dung được.
