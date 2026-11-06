@@ -40,6 +40,14 @@ Tạo thêm phần còn thiếu:
 $game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu cho màn hình shop và đối chiếu với kit.
 ```
 
+### Hai vai trò
+
+**Có UI kit:** dùng tối đa element trong kit. Chỉ tạo element mới khi không có cái nào hợp, vẽ theo đúng style kit, đặt vào đúng nhóm và đặt tên theo quy tắc. Sprite của kit giữ tên file gốc làm tên layer trong PSD, dùng nhiều lần vẫn cùng một tên, nên khi xuất layer không bị lặp resource.
+
+**Không có UI kit:** skill hỏi bạn mô tả art style, rồi hỏi bạn muốn bắt đầu từ prompt hay từ ảnh tham khảo (ít nhất 1 ảnh, kèm ghi chú là tham khảo layout hay art style). Sau khi bạn chốt màn demo, skill lấy nó làm mốc style, dựng một bộ component nền (font, nút, popup, panel, thanh, tab, khung, icon) và dùng lặp lại, chỉ thêm element mới khi thật cần.
+
+**Nền và art, cả hai vai trò:** màn nào cũng có nền. Màn thường dùng nền và pattern của kit trước. HUD có ảnh cảnh vẽ theo art style của game. Popup dùng màn cha làm mờ (`backdrop`). Nhân vật và vật phẩm không có trong kit thì skill tự tạo, hiển thị bằng hình thay vì chữ.
+
 ## Lệnh
 
 Gõ `$gui` trong Codex để thấy danh sách.

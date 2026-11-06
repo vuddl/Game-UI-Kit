@@ -61,22 +61,59 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 
 **Canvas.** Work at 1920 x 1080 unless the user says otherwise. Measure from a reference of another size, then convert with `resize-layout`, which scales without distortion and reports any empty margins. Tell the user about those margins.
 
-## Choose the mode
+## Choose the role
 
-| What the user has | Mode | Steps |
+First decide which of two roles applies: **A** when the user provides a UI kit, **B** when they do not.
+
+### Role A: a UI kit is provided
+
+| What the user wants | Mode | Steps |
 |---|---|---|
-| Nothing, or only images for inspiration | **New kit** | 1, Wireframes and flow, 2, 3, 4, Mockup, 5 |
-| Kit sheets to cut, wanting nothing new | **Cut only** | Existing kit, then 4, 5. No image generation. Mockup only if asked |
-| Loose sprites to organize, wanting nothing new | **Organize only** | Existing kit, then the 9-slice and states commands in 4, then 5. No image generation. Mockup only if asked |
-| A kit, plus elements it lacks | **Extend** | Existing kit, then 1, Wireframes and flow, 3, 4, Mockup, 5. Skip step 2 |
-| A finished kit, wanting to see it on a screen | **Mockup only** | Existing kit if not yet imported, then Mockup, 5. No image generation |
+| Kit sheets cut, nothing new | **Cut only** | Existing kit, then 4, 5. No image generation. Mockup only if asked |
+| Loose sprites organized, nothing new | **Organize only** | Existing kit, then the 9-slice and states commands in 4, then 5. No image generation. Mockup only if asked |
+| Screens built from the kit, adding what it lacks | **Extend** | Existing kit, then 1, Wireframes and flow, 3, 4, Backgrounds and art, Mockup, 5. Skip step 2 |
+| A finished kit seen on a screen | **Mockup only** | Existing kit if not yet imported, then Mockup, 5. No image generation |
 
-If the user attached a kit without saying which they want, ask once whether to only process it or also create missing elements, since only the latter uses quota. Do not generate images in the first two modes, even if something looks missing; list what is missing instead.
+If the user attached a kit without saying which they want, ask once whether to only process it or also create missing elements, since only the latter uses quota. Do not generate images in Cut only or Organize only, even if something looks missing; list what is missing instead.
+
+In Extend and Mockup only:
+
+- **Use the kit first.** For every slot on a screen, pick the kit element that fits its role best, and use the kit to the fullest. Create a new element only when no kit element suits the slot, not merely because a closer match could be drawn. Be flexible, though: the kit rarely covers every case, and a forced misfit is worse than a new element. List each new element with the slot it fills and why no kit element fits, and agree the list and image count before generating.
+- **Keep kit names.** Import kit sprites with their original file names recorded, as Existing kit describes. Never set a layout item's `name` for a kit sprite. The PSD and Unity exports then name its layer by the user's own file name, with the same name on every use, so exporting layers from the PSD maps back to one resource instead of duplicates.
+- **New elements match the kit.** Use 2 to 4 kit sprites of the same family as the style reference, put the result in the matching family folder, such as a new button in `buttons/`, and name it by the naming rule in Export step 3. Only new elements get new names.
+- **Backgrounds, characters and items** follow Backgrounds and art.
+
+### Role B: no UI kit
+
+1. **Ask for the art style.** Ask the user to describe the UI art style they want, unless they already have.
+2. **Ask which way to start,** and wait for the answer:
+   - **From a prompt:** read and analyze the user's description, then create the demo screen yourself.
+   - **From references:** ask for at least one UI reference image, and ask the user to note for each whether it is a reference for **layout** or for **art style**. Give each the matching role in the Brief.
+3. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
+4. **Base components first.** Before any other screen, build one base set, structured like a typical UI kit: font, buttons, popup, panel, bars, tabs, frames, icons. Use and reuse it on every screen. Then Wireframes and flow for the other screens, steps 3 and 4, Backgrounds and art, Mockup, 5.
+5. **New elements when needed.** Other screens do not have to reuse only what the demo screen showed, which would be rigid. Add a new element in the same style when a screen needs one the base set cannot cover. Keep the total small: reuse the base set first, so the kit stays systematic and the resources do not multiply. Tell the user the image count for each addition.
+
+## Backgrounds and art
+
+Both roles, in Extend and the steps after Role B's base set.
+
+- **Every screen has a background,** never a flat placeholder color.
+  - Screens that are not a scene, such as menus, shop and settings, use the kit's own backgrounds and patterns first. Generate one in the game's art style only when the kit has none that fits.
+  - **HUD:** generate a gameplay scene image that fits the game's art style, and put it under the HUD.
+  - **Popup:** use the screen that opens it, blurred and dimmed. Render that screen first, then:
+
+```bash
+py -3 <skill>/scripts/uikit.py backdrop ui_art/<kit> <parent_screen>
+```
+
+  This writes `elements/backgrounds/bg_blur_<parent_screen>.png`. Set it as the popup layout's `background`, and rebuild it with `--force` when the parent screen changes.
+- **Characters and items:** use them from the kit when it has them. Otherwise generate them to fit the game's art style, as `characters/` and `items/` elements. Show an item with its art, not with text or long descriptions.
+- Generated backgrounds, scenes, characters and items are elements like any other, made with `image_gen` and listed with their image count before generating. Mark them `"role": "art"` in layouts. This is not drawing the mockup itself, which stays forbidden.
 
 ## Existing kit
 
 1. **Sheets:** copy each into `sheets/`, write its `.txt` names by viewing it, then slice as in step 4. If the sheet has a painted background or touching elements that the script rejects, report this rather than regenerating, because regenerating would replace the user's art.
-2. **Loose sprites:** preview the names, because file names become element names. Keep button base names ending in `_normal` so states work, using `--map` to rename:
+2. **Loose sprites:** preview the names, because file names become element names. The original file name is also recorded, and exports name the sprite's layer by it, so renaming here never changes what the user's own files are called. Keep button base names ending in `_normal` so states work, using `--map` to rename:
 
 ```bash
 py -3 <skill>/scripts/uikit.py import ui_art/<kit> "<kit folder>" --prefix buttons
@@ -88,7 +125,7 @@ Import each family into its own prefix, or use `--map` with lines of `relative/f
 
 ## 1. Brief
 
-Collect the game, its genre, platform and orientation, the screens needed, and any references. Ask only for what is missing and blocks the work, at most one short message. If screens are not named, default to main menu, popup, shop and HUD.
+Collect the game, its genre, platform and orientation, the screens needed, and any references. Ask only for what is missing and blocks the work, at most one short message. In Role B, that message also asks for the art style and which way to start, as Choose the role says. If screens are not named, default to main menu, popup, shop and HUD.
 
 Label each input image as **style reference** or **edit target**. Load local files with `view_image` first so the tool can see them. Give each reference one or more roles, and say them back to the user:
 
@@ -215,7 +252,7 @@ Name layouts `mockups/<screen>__v1.json` and so on, or `<screen>.json` when ther
 
 View each image in `preview/mockups/`, plus `<screen>_variants.png` and `<screen>_vs_reference.png` when present. Fix crowding, overlaps, wrong sizes and script warnings by editing the layout, which costs no quota, and render again. If a sprite does not fit its role, say so and offer to replace it. Check stretched sprites closely, especially at small sizes. If one looks bad, adjust `border_scale` or the size, draw bars with `fill`, and report what cannot be fixed by layout.
 
-Never use `image_gen` to draw or polish a mockup, because a painted screen would hide how the real sprites look. Do not generate missing sprites unless the current mode and the user's approved plan include them; report each `MISSING_ELEMENT` instead. A kit with no background art gets a flat color, so say that the mockup shows sprites and layout rather than final screen art.
+Never use `image_gen` to draw or polish a mockup, because a painted screen would hide how the real sprites look. Do not generate missing sprites unless the current mode and the user's approved plan include them; report each `MISSING_ELEMENT` instead. Give every screen its background as Backgrounds and art describes. Only in Cut only, Organize only, or when the user declined new art, may a screen keep a flat color, and then say that the mockup shows sprites and layout rather than final screen art.
 
 ## 5. Check and deliver
 
@@ -235,7 +272,7 @@ Run only on the `export` command or when the user says the screens are final.
 
 **2. Ask about other art, every time.** Only UI is redrawn by default: buttons, panels, bars, frames, tabs, icons. Characters, environments, props and other illustration need approval first. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`, then list them and ask: redraw them, or keep them as images? Keep them as images if the answer is no. The script finds likely art by name, and refuses with `NEEDS_ART_CHOICE` until `--art redraw|image` is given. Ask this in the same message as the background question.
 
-**3. Name layers.** Set each layout item's `name` to `function_description_color_screen`, where color and screen are optional: `icon_settings`, `button_normal_blue`, `bg_character_battle`. Without one, a name comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
+**3. Name layers.** A sprite imported from the user's kit is named by its original file name, the same on every use, and stays an image layer holding the user's file, so the user's own layer export does not duplicate resources. Never override that with `name`. Pass `--redraw-kit` only if the user asks for kit sprites as shapes too. Name everything else, which is what you created, by `function_description_color_screen`, where color and screen are optional: `icon_settings`, `button_normal_blue`, `bg_character_battle`. Without a `name`, one comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
 
 **4. Build.** Choose a variant first with `confirm` where needed.
 

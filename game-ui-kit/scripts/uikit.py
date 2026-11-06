@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn UI sheets and loose sprites into a named kit with 9-slice data and checks.
 
-Commands: slice, import, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, confirm, flow,
+Commands: slice, import, backdrop, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, confirm, flow,
 export, psd, vectorize, unity, resize-layout, device, spec, info, qa.
 Run any of them with --help.
 Exit codes: 0 ok, 1 usage or input error, 2 result needs a fix (see output).
@@ -761,7 +761,9 @@ def cmd_states(args) -> int:
                 skipped += 1
                 continue
             Image.fromarray(np.clip(pixels, 0, 255).astype(np.uint8), "RGBA").save(target)
-            manifest["elements"][derived] = {**entry, "file": target.relative_to(kit).as_posix(),
+            # A derived state is new art, so it takes the kit's naming rule, not the source file's name.
+            fields = {k: v for k, v in entry.items() if k != "imported_from"}
+            manifest["elements"][derived] = {**fields, "file": target.relative_to(kit).as_posix(),
                                              "derived_from": name}
             written += 1
     save_manifest(kit, manifest)
@@ -1002,6 +1004,36 @@ def lint_layout(boxes: list[dict], size: tuple[int, int], warn) -> None:
                     warn(f"{a['name']} and {b['name']}: {label} edges are {gap} px apart, almost aligned")
 
 
+def cmd_backdrop(args) -> int:
+    """Blur and dim a rendered screen into a background element for the popups opened from it."""
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    picked = selected_layouts(kit, args.screen, strict=False)
+    if args.screen not in picked:
+        die("NOT_FOUND", f"no layout for screen {args.screen}", 1)
+    result = render_mockup(kit, picked[args.screen], manifest)
+    image = Image.open(kit / result["image"]).convert("RGB")
+    image = image.filter(ImageFilter.GaussianBlur(args.blur))
+    image = Image.blend(image, Image.new("RGB", image.size, ImageColor.getrgb(args.color)[:3]), args.dim)
+    name = args.name or f"backgrounds/bg_blur_{slug(args.screen)}"
+    if not NAME_RE.match(name):
+        die("BAD_NAME", f"use lowercase letters, digits, _ and /: {name}", 1)
+    target = kit / "elements" / f"{name}.png"
+    if name in manifest["elements"] and not args.force:
+        die("EXISTS", f"{name} already exists. Pass --force to rebuild it after the screen changed.", 1)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    image.save(target)
+    manifest["elements"][name] = {
+        "file": target.relative_to(kit).as_posix(), "width": image.width, "height": image.height,
+        "derived_from": f"screen:{args.screen}", "has_transparency": False,
+        "key_color": None, "touches_sheet_edge": False, "nine_slice": None,
+    }
+    save_manifest(kit, manifest)
+    print(f"Wrote {name} from {args.screen}, blur {args.blur}, dim {args.dim}. "
+          f'Set "background": "{name}" in the popup layouts. Rebuild with --force when {args.screen} changes.')
+    return 0
+
+
 def build_layers(kit: Path, layout: dict, manifest: dict):
     """Turn a layout into ordered layers. PNG mockups and PSD exports both draw from this."""
     size = tuple(layout["size"])
@@ -1068,7 +1100,7 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
                 sprite.putalpha(sprite.getchannel("A").point(lambda a: round(a * item["opacity"])))
             layer = Image.new("RGBA", size, (0, 0, 0, 0))
             layer.paste(sprite, (x0 + offset_x, y0 + offset_y))
-            add(layer, name.split("/")[-1], group)
+            add(layer, kit_layer_name(entry) or name.split("/")[-1], group)
         elif name:
             layer = Image.new("RGBA", size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(layer)
@@ -1581,7 +1613,8 @@ def cmd_info(args) -> int:
 
 FAMILY_FUNCTION = {"buttons": "button", "icons": "icon", "hud": "icon", "menu": "icon", "navigation": "icon",
                    "currency": "icon", "shop": "icon", "controls": "button", "panels": "panel", "bars": "bar",
-                   "frames": "frame", "backdrops": "bg", "backgrounds": "bg"}
+                   "frames": "frame", "backdrops": "bg", "backgrounds": "bg",
+                   "characters": "char", "items": "item"}
 PSD_NAME_RE = re.compile(r"^[a-z]+(_[a-z0-9]+)+$")
 DEFAULT_CANVAS = (1920, 1080)
 ART_NAME_RE = re.compile(r"(^|[/_])(characters?|char|avatars?|heroes|hero|npcs?|enem(y|ies)|monsters?|pets?|mounts?|"
@@ -1596,6 +1629,13 @@ def is_art(name: str, item: dict) -> bool:
 
 def slug(text: str) -> str:
     return normalize_name(Path(str(text))).replace("/", "_") or "item"
+
+
+def kit_layer_name(entry: dict | None) -> str | None:
+    """The original file name of a sprite imported from the user's kit, without its extension."""
+    if not entry or not entry.get("imported_from"):
+        return None
+    return Path(entry["imported_from"]).stem
 
 
 def element_layer_name(name: str) -> str:
@@ -1849,10 +1889,18 @@ def build_tree(kit: Path, layout: dict, manifest: dict, screen: str, background:
             box = item_box(item, native, size) if not ("w" in item and "h" in item) else item_box(item, None, size)
         else:
             box = item_box(item, None, size)
-        label = item.get("name") or (element_layer_name(name) if name else f"text_{slug(item.get('text', ''))}")
-        if not PSD_NAME_RE.match(label):
-            notes.append(f"{label}: does not follow function_description_color_screen")
-        node = {"name": unique(label), "box": list(box), "item": item, "element": name if entry else None,
+        original = kit_layer_name(entry)
+        if original and not item.get("name"):
+            # A kit sprite keeps the user's own file name on every use, so exporting
+            # layers from the PSD maps back to one resource instead of name_2, name_3.
+            label, file_id = original, unique(original)
+        else:
+            label = item.get("name") or (element_layer_name(name) if name else f"text_{slug(item.get('text', ''))}")
+            if not PSD_NAME_RE.match(label):
+                notes.append(f"{label}: does not follow function_description_color_screen")
+            label = file_id = unique(label)
+        node = {"name": label, "file_id": file_id, "kit": bool(original and not item.get("name")),
+                "box": list(box), "item": item, "element": name if entry else None,
                 "entry": entry, "children": []}
         group = item.get("group")
         container = find_container(node, group, placed)
@@ -1908,9 +1956,12 @@ def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, a
     if entry:
         native = (entry["width"], entry["height"])
         mapper, mode = item_mapper(item, entry, box, native)
-        keep_image = is_art(node["element"], item) and args.art != "redraw"
+        from_kit = node.get("kit") and not getattr(args, "redraw_kit", False)
+        keep_image = from_kit or (is_art(node["element"], item) and args.art != "redraw")
         spec = {"kind": "raster"} if keep_image else vectorize_element(kit, node["element"], entry, args)
-        if keep_image:
+        if from_kit:
+            stats.setdefault("kit_images", []).append(node["name"])
+        elif keep_image:
             stats["art_as_images"].append(node["name"])
         if spec["kind"] == "vector":
             stats["vector"].append(node["name"])
@@ -1925,7 +1976,7 @@ def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, a
                 # A smart object cannot 9-slice, so the stretched result is embedded at final size.
                 image = Image.open(source).convert("RGBA")
                 rendered = render_nine_slice(image, entry["nine_slice"], box[2] - box[0], box[3] - box[1], item.get("border_scale"))
-                source = assets / f"{node['name']}.png"
+                source = assets / f"{node.get('file_id', node['name'])}.png"
                 rendered.save(source)
                 place = list(box)
             else:
@@ -1939,7 +1990,8 @@ def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, a
                     place = list(box)
                 if scale > 1.02:
                     stats["upscaled"].append(f"{node['name']}: source enlarged {scale:.1f}x, will look soft")
-            children.append({"op": "smart", "name": f"{node['name']}_image", "file": source.resolve().as_posix(),
+            layer = node["name"] if node.get("kit") else f"{node['name']}_image"
+            children.append({"op": "smart", "name": layer, "file": source.resolve().as_posix(),
                              "box": [round(v, 2) for v in place], "opacity": opacity})
     if "text" in item:
         center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2]
@@ -2232,7 +2284,7 @@ def cmd_psd(args) -> int:
         font_path, font_source = resolve_font(kit, layout)
         font = psd_font(font_path)
         nodes, notes = build_tree(kit, layout, manifest, screen, args.background)
-        stats = {"vector": [], "image": [], "art_as_images": [], "upscaled": [], "text": 0}
+        stats = {"vector": [], "image": [], "kit_images": [], "art_as_images": [], "upscaled": [], "text": 0}
         ops = []
         background = layout.get("background")
         if isinstance(background, str) and background.startswith("#"):
@@ -2260,7 +2312,7 @@ def cmd_psd(args) -> int:
         result = None if args.no_run else run_photoshop(jsx, args.timeout)
         entry = {"psd": psd.relative_to(kit).as_posix() if result and result.get("ok") else None,
                  "script": jsx.relative_to(kit).as_posix(), "redrawn_as_shapes": stats["vector"],
-                 "kept_as_images": stats["image"], "art_kept_as_images": stats["art_as_images"], "live_text": stats["text"], "font": font, "font_source": font_source,
+                 "kept_as_images": stats["image"], "kit_sprites_as_images": stats["kit_images"], "art_kept_as_images": stats["art_as_images"], "live_text": stats["text"], "font": font, "font_source": font_source,
                  "warnings": notes + stats["upscaled"]}
         if result is None:
             entry["status"] = "script only: open the .jsx with Photoshop, File > Scripts > Browse"
@@ -2586,6 +2638,16 @@ def main() -> int:
     p.add_argument("--force", action="store_true", help="Replace existing elements")
     p.set_defaults(func=cmd_import)
 
+    p = commands.add_parser("backdrop", help="Blur and dim a screen into a background element for its popups")
+    p.add_argument("kit")
+    p.add_argument("screen", help="Parent screen, as named in mockups/")
+    p.add_argument("--name", help="Element name, default backgrounds/bg_blur_<screen>")
+    p.add_argument("--blur", type=float, default=14)
+    p.add_argument("--dim", type=float, default=0.45, help="0 to 1, how much the dim color covers")
+    p.add_argument("--color", default="#000000", help="Dim color")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_backdrop)
+
     p = commands.add_parser("palette", help="Record the kit's tone from an image or chosen colors")
     p.add_argument("kit")
     p.add_argument("image", nargs="?", help="Reference image")
@@ -2659,6 +2721,8 @@ def main() -> int:
     p.add_argument("--screen")
     p.add_argument("--background", choices=["redraw", "image"], help="Required when a screen has an image background")
     p.add_argument("--art", choices=["redraw", "image"], help="Required when a screen uses characters or environment art")
+    p.add_argument("--redraw-kit", action="store_true",
+                   help="Also redraw the user's kit sprites as shapes; by default they stay images under their own file names")
     p.add_argument("--unconfirmed", action="store_true", help="Also export screens not yet confirmed")
     p.add_argument("--no-run", action="store_true", help="Only write the Photoshop script")
     p.add_argument("--timeout", type=int, default=900)
