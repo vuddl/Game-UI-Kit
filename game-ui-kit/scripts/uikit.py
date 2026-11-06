@@ -1141,6 +1141,10 @@ def render_mockup(kit: Path, path: Path, manifest: dict) -> dict:
             pair.paste(image, (ref.width + 24, 0))
             compared = out_dir / f"{path.stem}_vs_reference.png"
             pair.save(compared)
+            mine, theirs = detail_score(image), detail_score(ref)
+            if theirs > 0 and mine / theirs < DETAIL_RATIO:
+                warnings.append(f"DETAIL_GAP: about {mine / theirs:.0%} of its reference's detail; "
+                                "add the parts and decoration the reference shows")
         else:
             warnings.append(f"reference not found: {layout['reference']}")
 
@@ -1180,6 +1184,55 @@ def plan_text(paths: list[Path]) -> str:
     return f"{len(paths)} mockups across {len(counts)} screens: {detail}"
 
 
+BACKGROUND_FAMILIES = {"backgrounds", "backdrops"}
+MIN_OWN_ELEMENTS = 3
+DETAIL_RATIO = 0.6
+
+
+def detail_score(image: Image.Image) -> float:
+    """Mean edge strength at a fixed width, so a plain panel scores low and a decorated screen high."""
+    small = image.convert("L").resize((480, max(1, round(image.height * 480 / image.width))), Image.LANCZOS)
+    return float(np.asarray(small.filter(ImageFilter.FIND_EDGES), dtype=float).mean())
+
+
+def richness_warnings(kit: Path) -> dict[str, list[str]]:
+    """Flag screens with no element of their own, or more text than art, per screen across its variants."""
+    used: dict[str, set[str]] = {}
+    texts: dict[str, int] = {}
+    arts: dict[str, int] = {}
+    for path in layout_paths(kit):
+        try:
+            items = json.loads(path.read_text(encoding="utf-8")).get("items", [])
+        except (OSError, ValueError, AttributeError):
+            continue
+        screen = screen_of(path.stem)
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            element = item.get("element")
+            if element and element.split("/")[0] not in BACKGROUND_FAMILIES:
+                used.setdefault(screen, set()).add(STATE_RE.sub("", element))
+                arts[screen] = arts.get(screen, 0) + 1
+            elif "text" in item:
+                texts[screen] = texts.get(screen, 0) + 1
+    screens = set(used) | set(texts)
+    result: dict[str, list[str]] = {}
+    for screen in sorted(screens):
+        notes = []
+        mine = used.get(screen, set())
+        others = set().union(*(used.get(o, set()) for o in screens if o != screen))
+        own = mine - others
+        if len(screens) > 1 and len(own) < MIN_OWN_ELEMENTS:
+            notes.append(f"has {len(own)} element(s) of its own, fewer than {MIN_OWN_ELEMENTS}; "
+                         "add this screen's specific parts from its concept")
+        if texts.get(screen, 0) > arts.get(screen, 0):
+            notes.append(f"shows more text-only items ({texts.get(screen, 0)}) than art ({arts.get(screen, 0)}); "
+                         "replace labels with icons or art where they would do")
+        if notes:
+            result[screen] = notes
+    return result
+
+
 def cmd_mockup(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
@@ -1211,6 +1264,13 @@ def cmd_mockup(args) -> int:
             print(f"  MISSING_ELEMENT: {element}")
         for warning in screen["warnings"]:
             print(f"  warning: {warning}".encode("ascii", "replace").decode())
+    richness = richness_warnings(kit)
+    report["richness"] = richness
+    (kit / "mockup_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    for screen, notes in richness.items():
+        if screen in {screen_of(n) for n in screens}:
+            for note in notes:
+                print(f"  PLAIN_SCREEN {screen}: {note}")
     for screen, board in boards.items():
         print(f"Variants of {screen}: {board}")
     print(f"Rendered {len(screens)} mockups. {len(unused)} elements not used in any mockup.")
@@ -2606,6 +2666,9 @@ def cmd_qa(args) -> int:
             continue
         for name in sorted(set(planned) - set(manifest["elements"])):
             warnings.append(f"mockup {layout_path.stem}: uses missing element {name}")
+
+    for screen, notes in richness_warnings(kit).items():
+        warnings += [f"screen {screen}: {note}" for note in notes]
 
     sheet = contact_sheet(kit, manifest)
     report = {"elements": len(manifest["elements"]), "errors": errors, "warnings": warnings,

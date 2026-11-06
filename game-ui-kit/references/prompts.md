@@ -2,17 +2,34 @@
 
 ## Element catalog
 
-Include only families the requested screens use.
+Include only the screens requested. **Base** parts are shared by every screen. The **screen-specific minimum** is what a screen must have of its own, so it does not end up as a plain panel with text. Take the exact list from the screen's concept, and add to it, not below it.
 
-| Screen | Typical elements |
-|---|---|
-| Main menu | primary and secondary buttons, icon buttons, title plate, settings, sound and profile icons |
-| Popup | popup panel, header ribbon, close button, confirm and cancel buttons, divider |
-| Shop | item card, price tag, currency icons, tabs, sale badge, buy button |
-| Inventory | item slot empty and selected, rarity frames, tabs, scrollbar |
-| HUD | health, energy and progress bars as separate track and fill, avatar frame, counter plate, pause button |
-| Settings | toggle on and off, slider track, fill and knob, checkbox, list row |
-| Results | star empty and filled, result panel, reward slot, ribbon |
+| Screen | Base parts it uses | Screen-specific minimum |
+|---|---|---|
+| Main menu | primary and secondary buttons, panel | title plate or logo, icon buttons for settings, sound and profile, a decorative frame or ribbon |
+| Popup | popup panel, buttons | header ribbon, close button, divider, an icon or illustration for its message |
+| Shop | panel, buy button, currency icons | tabs, item card frame, price tag, sale or rarity badge, item art, a currency plate with a plus button |
+| Inventory | panel, buttons | item slot empty and selected, rarity frames, tabs, scrollbar, item art |
+| HUD | bars, icon buttons | avatar frame, counter plates, pause button, action buttons, quick slots |
+| Settings | panel, buttons, slider track and fill | an icon per row, slider knob, toggle on and off, row plate, close button, section tabs when there are more than about five rows |
+| Results | panel, buttons | stars empty and filled, result ribbon, reward slots, item art |
+
+A screen with only text labels where an icon would do is unfinished. In settings, every row gets an icon; in a shop, every item gets art and a price tag.
+
+## Prompt template for a screen concept
+
+Use this for each screen type after the style anchor is chosen.
+
+```text
+Use case: stylized-concept
+Asset type: game UI screen concept, used as the design target for one screen
+Input images: Image 1: style reference, match its materials, palette, border treatment, lighting and level of detail exactly
+Primary request: the <screen> screen of <game>, <orientation>, showing <functions of the screen>
+Must include: <screen-specific minimum from the catalog, plus what the brief adds>
+Style/medium: <style guide summary>
+Composition/framing: full screen, front-on; the same level of decoration as Image 1, not a simplified version of it
+Avoid: one plain panel holding only text and buttons; reusing Image 1's layout; watermark
+```
 
 ## Sheet limits
 

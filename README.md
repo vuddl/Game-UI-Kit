@@ -46,6 +46,8 @@ $game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu 
 
 **Không có UI kit:** skill hỏi bạn mô tả art style, rồi hỏi bạn muốn bắt đầu từ prompt hay từ ảnh tham khảo (ít nhất 1 ảnh, kèm ghi chú là tham khảo layout hay art style). Sau khi bạn chốt màn demo, skill lấy nó làm mốc style, dựng một bộ component nền (font, nút, popup, panel, thanh, tab, khung, icon) và dùng lặp lại, chỉ thêm element mới khi thật cần.
 
+**Mỗi màn có phần riêng:** sau khi chốt màn mốc, skill vẽ thêm 1 concept cho mỗi loại màn khác (shop, settings...) theo cùng style. Element chia hai lớp: lớp base dùng chung và lớp riêng từng màn, ví dụ shop có tab, khung item, tag giá, settings có icon từng dòng và toggle. Lệnh `mockup` và `qa` cảnh báo `PLAIN_SCREEN` khi một màn chỉ có panel, nút và chữ.
+
 **Nền và art, cả hai vai trò:** màn nào cũng có nền. Màn thường dùng nền và pattern của kit trước. HUD có ảnh cảnh vẽ theo art style của game. Popup dùng màn cha làm mờ (`backdrop`). Nhân vật và vật phẩm không có trong kit thì skill tự tạo, hiển thị bằng hình thay vì chữ.
 
 ## Lệnh

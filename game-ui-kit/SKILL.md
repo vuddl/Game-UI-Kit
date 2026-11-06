@@ -80,6 +80,7 @@ In Extend and Mockup only:
 
 - **Use the kit first.** For every slot on a screen, pick the kit element that fits its role best, and use the kit to the fullest. Create a new element only when no kit element suits the slot, not merely because a closer match could be drawn. Be flexible, though: the kit rarely covers every case, and a forced misfit is worse than a new element. List each new element with the slot it fills and why no kit element fits, and agree the list and image count before generating.
 - **Keep kit names.** Import kit sprites with their original file names recorded, as Existing kit describes. Never set a layout item's `name` for a kit sprite. The PSD and Unity exports then name its layer by the user's own file name, with the same name on every use, so exporting layers from the PSD maps back to one resource instead of duplicates.
+- **Every screen gets its own parts.** Check each screen against the per-screen minimum in [references/prompts.md](references/prompts.md). When the kit lacks a screen's specific parts, create them rather than filling the screen with the kit's generic panel and buttons.
 - **New elements match the kit.** Use 2 to 4 kit sprites of the same family as the style reference, put the result in the matching family folder, such as a new button in `buttons/`, and name it by the naming rule in Export step 3. Only new elements get new names.
 - **Backgrounds, characters and items** follow Backgrounds and art.
 
@@ -90,8 +91,9 @@ In Extend and Mockup only:
    - **From a prompt:** read and analyze the user's description, then create the demo screen yourself.
    - **From references:** ask for at least one UI reference image, and ask the user to note for each whether it is a reference for **layout** or for **art style**. Give each the matching role in the Brief.
 3. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
-4. **Base components first.** Before any other screen, build one base set, structured like a typical UI kit: font, buttons, popup, panel, bars, tabs, frames, icons. Use and reuse it on every screen. Then Wireframes and flow for the other screens, steps 3 and 4, Backgrounds and art, Mockup, 5.
-5. **New elements when needed.** Other screens do not have to reuse only what the demo screen showed, which would be rigid. Add a new element in the same style when a screen needs one the base set cannot cover. Keep the total small: reuse the base set first, so the kit stays systematic and the resources do not multiply. Tell the user the image count for each addition.
+4. **Screen concepts.** Generate one concept per other screen type, in the demo's style, as Style anchor describes. Each shows what that screen needs beyond the shared parts.
+5. **Two layers of components.** Build the base set first, structured like a typical UI kit: font, buttons, popup, panel, bars, frames. Use and reuse it on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
+6. Then Wireframes and flow for the other screens, steps 3 and 4, Backgrounds and art, Mockup, 5.
 
 ## Backgrounds and art
 
@@ -158,6 +160,13 @@ When extending a kit the user owns or says is licensed for this, match it closel
 
 Plan the element list using [references/prompts.md](references/prompts.md), split it into sheets, then tell the user the plan and the number of images it will generate. If wireframes come next, finalize the list after them, because they show which elements the screens need.
 
+Plan the list in two layers:
+
+- **Base:** shared by every screen, such as the font, main buttons, panel, bars and frames. Keep this layer small and reuse it everywhere.
+- **Screen-specific:** for each screen, the parts that show what the screen is for, taken from its screen concept and the per-screen minimum in [references/prompts.md](references/prompts.md). Every screen gets its own, so no screen is only a base panel, a button and text.
+
+Keeping resources few applies to the base layer and to near-duplicates, never to the screen-specific layer. Reuse a screen-specific part on another screen only when it does the same job there, such as one close button for every popup.
+
 ## Wireframes and flow
 
 Propose how the screens are laid out and connected before spending quota on art. Write layouts as described in [references/mockup.md](references/mockup.md), naming options `mockups/<screen>__v1.json`, `__v2` and so on. List every button that changes screen with `goto`. Elements that do not exist yet are fine here.
@@ -176,6 +185,10 @@ py -3 <skill>/scripts/uikit.py flow ui_art/<kit> --wireframe --start <first_scre
 Generate 1 to 3 concepts of the most representative screen. Without references, offer distinct directions. With references, stay close to them.
 
 **Stop and let the user choose** before generating any sheets, because every later image depends on this choice and uses their plan quota. Skip the stop only if the user asked for no check-ins. Then save the choice as `style/style_anchor.png` and write `style/style_guide.md` with the palette, materials, corner shape, border treatment, lighting direction and icon treatment.
+
+**Screen concepts.** The anchor fixes the style, not the content of other screens. A screen built only from the anchor screen's parts comes out as one plain panel, one button and text. So after the anchor is chosen, generate one concept for each other screen type the user asked for, such as shop, settings, inventory or results, attaching the anchor as the style reference and using the concept template in [references/prompts.md](references/prompts.md). Screens of one type, such as two popups, share one concept. Say the image count first, show the concepts together, and let the user ask for changes, but do not wait unless they asked for check-ins. Save them as `style/concepts/<screen>.png` and set each as its layout's `reference`, so the mockup is checked against it in `<screen>_vs_reference.png`. The mockup reports `DETAIL_GAP` when it is much plainer than its concept; fix that before showing the screen.
+
+Skip screen concepts only in Role A when the kit already covers a screen's specific parts, or when the user declines them.
 
 ## 3. Component sheets
 
@@ -232,6 +245,8 @@ Build mockups from the kit's real sprites, so the user can judge how the set wor
 
 **Layout decision.** A mockup either keeps the existing layout or rearranges it. Follow `keep` or `rearrange` if the user said so. Otherwise, when a reference layout exists, ask this one question before writing layouts. With no reference, use `rearrange`.
 
+**A screen with a concept always uses `keep` against its concept,** without asking, unless the user said `rearrange`. Measure every part the concept shows, decorations included, and give each its own element, so the mockup reproduces the concept rather than a sparser version of it. Writing coordinates freely is what makes every screen but the anchor look plain.
+
 - **keep:** preserve the reference's positions and sizes. Only fix real faults, such as overlaps and cut-off items, and report each change. Extra variants differ only in spacing and scale.
 - **rearrange:** decide the layout yourself to look good and play well, following the guide in [references/mockup.md](references/mockup.md). Make the variants genuinely different, and explain each in one line.
 
@@ -249,6 +264,8 @@ Name layouts `mockups/<screen>__v1.json` and so on, or `<screen>.json` when ther
 **Text.** Write in-game text in English unless the user names another language or the reference's text is in one. This is separate from the language you reply in. Add a label only where the meaning is not already clear, as the guide in [references/mockup.md](references/mockup.md) explains; a reference that labels everything does not oblige you to, unless the mode is `keep`.
 
 **Font.** Use the kit's font. If there is none, pick one following [references/fonts.md](references/fonts.md) before rendering, and report which. A `no font in the kit` warning means this step was missed.
+
+**Richness.** The `mockup` and `qa` commands warn with `PLAIN_SCREEN` when a screen has fewer than 3 elements of its own, or shows more text than art, and `mockup` warns with `DETAIL_GAP` when a screen is much plainer than its concept. Treat that warning as a real fault: add the screen's specific parts from its concept rather than accepting a plain panel with text. The one exception is screens of one type, such as two popups, which may share all their parts; say so instead.
 
 View each image in `preview/mockups/`, plus `<screen>_variants.png` and `<screen>_vs_reference.png` when present. Fix crowding, overlaps, wrong sizes and script warnings by editing the layout, which costs no quota, and render again. If a sprite does not fit its role, say so and offer to replace it. Check stretched sprites closely, especially at small sizes. If one looks bad, adjust `border_scale` or the size, draw bars with `fill`, and report what cannot be fixed by layout.
 
