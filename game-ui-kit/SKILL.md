@@ -33,6 +33,7 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 |---|---|
 | `info` | List these commands with one line each, then run the `info` script and report the kit's status and next step. Change nothing. |
 | `kit <path>` | Load an existing kit, following Existing kit. |
+| `visual` | Ask the visual questions in [references/visual_brief.md](references/visual_brief.md): wireframe files, UI kit or references or art style, and backgrounds. Save the answers, then start the role they choose. Run it before any art is made for a kit. |
 | `wireframe create <description>` | Ask the wireframe questions first, then write layouts and draw the wireframe images only. No flow board and no demo. See Wireframes and flow. |
 | `wireframe adjust <description>` | Change the layouts as described and redraw. A confirmed wireframe or screen that changes stops being confirmed, so report which. |
 | `tone [auto\|game\|ref]` | With no argument, report the tone and why. `auto` is the default and you decide; `game` and `ref` force that source. Replace the palette with `--force`, and use `compare` to report how many sprites no longer match. Do not regenerate them unless asked. |
@@ -53,9 +54,11 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 
 `/choose` is the old name of `confirm`.
 
-**Order.** `kit` (optional), `wireframe create`, `wireframe adjust`, `confirm wireframe`, `asset`, `mockup`, `mockup adjust`, `confirm <screen>`, `flow`, `export`. Run `info` to see where a kit stands. If a step is missing, say what to do first rather than doing it yourself:
+**Order.** `wireframe create`, `wireframe adjust`, `confirm wireframe`, `visual`, `asset`, `mockup`, `mockup adjust`, `confirm <screen>`, `flow`, `export`. Run `info` to see where a kit stands. If a step is missing, say what to do first rather than doing it yourself:
 
-- `asset` and `mockup` need a confirmed wireframe, unless the user says the kit's layouts are already final.
+- `asset` and `mockup` need a confirmed wireframe, or wireframe files given in `visual`, unless the user says the kit's layouts are already final.
+- `asset`, `mockup` and the style anchor need the visual answers. When `brief.json` has no `visual`, ask the visual questions first, even if the user ran another command. `kit <path>` counts as answering 2a.
+- A user who brings their own wireframe files can start at `visual`.
 - `export` handles only confirmed screens.
 - `mockup` never generates images. It draws a red box for a missing sprite and suggests `asset`, so quota is spent only when the user agrees.
 
@@ -63,7 +66,7 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 
 ## Choose the role
 
-First decide which of two roles applies: **A** when the user provides a UI kit, **B** when they do not.
+First decide which of two roles applies: **A** when the user provides a UI kit, **B** when they do not. The visual questions decide this: answer 2a is Role A, 2b is Role B.
 
 ### Role A: a UI kit is provided
 
@@ -86,10 +89,10 @@ In Extend and Mockup only:
 
 ### Role B: no UI kit
 
-1. **Ask for the art style.** Offer the art styles in [references/catalog.md](references/catalog.md) as a numbered list, plus "Other: describe it", and let the user pick one or describe their own, unless they already have. Put the chosen style's description into the style guide and every prompt.
-2. **Ask which way to start,** and wait for the answer:
-   - **From a prompt:** read and analyze the user's description, then create the demo screen yourself.
-   - **From references:** ask for at least one UI reference image, and ask the user to note for each whether it is a reference for **layout** or for **art style**. Give each the matching role in the Brief.
+1. **Art style,** from visual question 2b2: the colors, the chosen style from [references/catalog.md](references/catalog.md) and the description. Put the style's description and the colors into the style guide and every prompt.
+2. **Way to start,** from visual question 2b:
+   - **2b2, from a description:** read and analyze the description, then create the demo screen yourself.
+   - **2b1, from references:** use every reference given, with the layout or art style role the user noted, art style by default. Give each the matching role in the Brief.
 3. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
 4. **Screen concepts.** Generate one concept per other screen type, in the demo's style, as Style anchor describes. Each shows what that screen needs beyond the shared parts.
 5. **Two layers of components.** Build the base set first, exactly as [references/ui_kit_standard.md](references/ui_kit_standard.md) lists it: buttons in 6 colors plus special buttons, popup, font, title frames in 6 colors, background and pattern, the common icons, coin and gem in 5 tiers, common shapes, palette, reward frames and loading bars, with the names it gives. Draw the shapes with `shapes` rather than `image_gen`. Use and reuse the base set on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
@@ -97,7 +100,7 @@ In Extend and Mockup only:
 
 ## Backgrounds and art
 
-Both roles, in Extend and the steps after Role B's base set.
+Both roles, in Extend and the steps after Role B's base set. Visual question 3 decides the source: the user's files (3a), the kit's backgrounds and patterns (3b1), or new ones generated in the art style (3b2). The rules below apply within that choice; with 3a or 3b1, generate a background only for a screen the user's files or the kit cannot cover, and say so first.
 
 - **Every screen has a background,** never a flat placeholder color.
   - Screens that are not a scene, such as menus, shop and settings, use the kit's own backgrounds and patterns first. Generate one in the game's art style only when the kit has none that fits.
