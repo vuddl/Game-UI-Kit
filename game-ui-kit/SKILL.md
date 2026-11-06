@@ -33,7 +33,7 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 |---|---|
 | `info` | List these commands with one line each, then run the `info` script and report the kit's status and next step. Change nothing. |
 | `kit <path>` | Load an existing kit, following Existing kit. |
-| `wireframe create <description>` | Write layouts and draw wireframes and the flow. See Wireframes and flow. |
+| `wireframe create <description>` | Ask the wireframe questions first, then write layouts and draw the wireframe images only. No flow board and no demo. See Wireframes and flow. |
 | `wireframe adjust <description>` | Change the layouts as described and redraw. A confirmed wireframe or screen that changes stops being confirmed, so report which. |
 | `tone [auto\|game\|ref]` | With no argument, report the tone and why. `auto` is the default and you decide; `game` and `ref` force that source. Replace the palette with `--force`, and use `compare` to report how many sprites no longer match. Do not regenerate them unless asked. |
 | `asset <description>` | Generate the sprites still missing, following steps 2 to 4. **The only command that uses image quota, along with `replace`.** Estimate the images first. |
@@ -44,9 +44,9 @@ The user runs these as `$gui-<command>`, shown as a list when typing `$gui`, or 
 | `review <screen>` | View the mockup and critique hierarchy, legibility, thumb reach, tone and crowding against the layout guide, with concrete fixes. Change nothing. |
 | `device <screen>` | Run the `device` script, view `preview/devices/`, and report what breaks. |
 | `check` | Run `compare`, then `qa`, view the images, and report in plain words. |
-| `confirm wireframe` | Run `confirm <kit> wireframe`. |
+| `confirm wireframe` | Run `confirm <kit> wireframe`. Then, only if `brief.json` has `"prototype": true`, build the prototype with `flow --wireframe`. |
 | `confirm <screen> [v<n>]` | Run `confirm <kit> <screen> [v<n>]`. |
-| `flow` | Run `flow`, view the board, and report the demo path and any broken links or dead ends. |
+| `flow` | Run `flow`, view the board, and report the demo path and any broken links or dead ends. Runs on request, or after `confirm wireframe` when the brief asked for a prototype. |
 | `spec [screen]` | Run `spec` and report the file paths. |
 | `export [screen]` | See Export. |
 | `export unity [screen]` | See Export. |
@@ -86,13 +86,13 @@ In Extend and Mockup only:
 
 ### Role B: no UI kit
 
-1. **Ask for the art style.** Ask the user to describe the UI art style they want, unless they already have.
+1. **Ask for the art style.** Offer the art styles in [references/catalog.md](references/catalog.md) as a numbered list, plus "Other: describe it", and let the user pick one or describe their own, unless they already have. Put the chosen style's description into the style guide and every prompt.
 2. **Ask which way to start,** and wait for the answer:
    - **From a prompt:** read and analyze the user's description, then create the demo screen yourself.
    - **From references:** ask for at least one UI reference image, and ask the user to note for each whether it is a reference for **layout** or for **art style**. Give each the matching role in the Brief.
 3. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
 4. **Screen concepts.** Generate one concept per other screen type, in the demo's style, as Style anchor describes. Each shows what that screen needs beyond the shared parts.
-5. **Two layers of components.** Build the base set first, structured like a typical UI kit: font, buttons, popup, panel, bars, frames. Use and reuse it on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
+5. **Two layers of components.** Build the base set first, exactly as [references/ui_kit_standard.md](references/ui_kit_standard.md) lists it: buttons in 6 colors plus special buttons, popup, font, title frames in 6 colors, background and pattern, the common icons, coin and gem in 5 tiers, common shapes, palette, reward frames and loading bars, with the names it gives. Draw the shapes with `shapes` rather than `image_gen`. Use and reuse the base set on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
 6. Then Wireframes and flow for the other screens, steps 3 and 4, Backgrounds and art, Mockup, 5.
 
 ## Backgrounds and art
@@ -115,19 +115,19 @@ py -3 <skill>/scripts/uikit.py backdrop ui_art/<kit> <parent_screen>
 ## Existing kit
 
 1. **Sheets:** copy each into `sheets/`, write its `.txt` names by viewing it, then slice as in step 4. If the sheet has a painted background or touching elements that the script rejects, report this rather than regenerating, because regenerating would replace the user's art.
-2. **Loose sprites:** preview the names, because file names become element names. The original file name is also recorded, and exports name the sprite's layer by it, so renaming here never changes what the user's own files are called. Keep button base names ending in `_normal` so states work, using `--map` to rename:
+2. **Loose sprites:** preview the names, because file names become element names. The original file name is also recorded, and exports name the sprite's layer by it, so renaming here never changes what the user's own files are called. Give button base names no state suffix, such as `btn_yellow`, so states work, using `--map` to rename:
 
 ```bash
 py -3 <skill>/scripts/uikit.py import ui_art/<kit> "<kit folder>" --prefix buttons
 ```
 
-Import each family into its own prefix, or use `--map` with lines of `relative/file.png = buttons/btn_primary_normal`. The files are copied unchanged. PSD, JPG and other formats are skipped and counted, so ask for PNG exports of those if needed.
+Import each family into its own prefix, or use `--map` with lines of `relative/file.png = buttons/btn_yellow`. The files are copied unchanged. PSD, JPG and other formats are skipped and counted, so ask for PNG exports of those if needed.
 
 3. **Extend only:** view the kit, list which elements it lacks for the requested screens, and agree the list and image count with the user. Copy 2 to 4 representative sprites or screens into `style/references/`, write `style/style_guide.md` from what you see, and use these as the style anchor in step 3.
 
 ## 1. Brief
 
-Collect the game, its genre, platform and orientation, the screens needed, and any references. Ask only for what is missing and blocks the work, at most one short message. In Role B, that message also asks for the art style and which way to start, as Choose the role says. If screens are not named, default to main menu, popup, shop and HUD.
+Collect the game, its genre, platform and orientation, the screens needed, and any references. When the wireframe questions were answered, read them from `brief.json` instead of asking again. Ask only for what is missing and blocks the work, at most one short message. In Role B, that message also asks for the art style and which way to start, as Choose the role says. If screens are not named, default to main menu, popup, shop and HUD.
 
 Label each input image as **style reference** or **edit target**. Load local files with `view_image` first so the tool can see them. Give each reference one or more roles, and say them back to the user:
 
@@ -158,7 +158,7 @@ View `preview/palette.png`, and use tighter regions if it picked up colors you d
 
 When extending a kit the user owns or says is licensed for this, match it closely. Otherwise, match the general art direction of a third-party kit without reproducing its elements one for one. If the user wants an exact copy of a purchased kit, say that its license decides this.
 
-Plan the element list using [references/prompts.md](references/prompts.md), split it into sheets, then tell the user the plan and the number of images it will generate. If wireframes come next, finalize the list after them, because they show which elements the screens need.
+Plan the element list using [references/prompts.md](references/prompts.md) and name every new element by [references/ui_kit_standard.md](references/ui_kit_standard.md), split it into sheets, then tell the user the plan and the number of images it will generate. If wireframes come next, finalize the list after them, because they show which elements the screens need.
 
 Plan the list in two layers:
 
@@ -169,16 +169,25 @@ Keeping resources few applies to the base layer and to near-duplicates, never to
 
 ## Wireframes and flow
 
-Propose how the screens are laid out and connected before spending quota on art. Write layouts as described in [references/mockup.md](references/mockup.md), naming options `mockups/<screen>__v1.json`, `__v2` and so on. List every button that changes screen with `goto`. Elements that do not exist yet are fine here.
+Propose how the screens are laid out and connected before spending quota on art.
+
+**1. Questions.** Start every `wireframe create` with the questions in [references/wireframe_brief.md](references/wireframe_brief.md), as one numbered message the user can answer in one line, and wait. Ask the game type and gameplay only for the first wireframe of a new game. Skip a question only when the user's message already answers it. Save the answers to `brief.json`.
+
+**2. Wireframe images only.** Write layouts as described in [references/mockup.md](references/mockup.md), using the brief's size and areas, naming options `mockups/<screen>__v1.json`, `__v2` and so on. List every button that changes screen with `goto`. Elements that do not exist yet are fine here.
 
 ```bash
 py -3 <skill>/scripts/uikit.py wireframe ui_art/<kit>
 ```
+
+View the images, show them to the user, and name the option you recommend. Do not run `flow` or build a demo yet: the user edits and approves the wireframe first, which saves tokens and waiting. Use `wireframe adjust` for their changes.
+
+**3. Prototype after approval.** Once the user runs `confirm wireframe`, build the prototype only if the brief says yes:
+
 ```bash
 py -3 <skill>/scripts/uikit.py flow ui_art/<kit> --wireframe --start <first_screen>
 ```
 
-`flow` writes `preview/flow.png` and a clickable `demo/index.html`, and reports broken links, unreachable screens and dead ends. Fix what is unintended. View the images, show them to the user, and name the option you recommend. Run `flow` again without `--wireframe` once mockups exist, so the demo shows the real art.
+`flow` writes `preview/flow.png` and a clickable `demo/index.html`, and reports broken links, unreachable screens and dead ends. Fix what is unintended. Run `flow` again without `--wireframe` once mockups exist, so the demo shows the real art, again only if the brief asked for a prototype or the user runs `flow`.
 
 ## 2. Style anchor
 
@@ -194,7 +203,7 @@ Skip screen concepts only in Role A when the kit already covers a screen's speci
 
 Generate one `image_gen` call per sheet using the templates in [references/prompts.md](references/prompts.md), attaching the style anchor as a style reference every time. Save each as `sheets/<sheet>.png`.
 
-Write `sheets/<sheet>.txt` with one element name per line, left to right and top to bottom, such as `buttons/btn_primary_normal`. Names use lowercase letters, digits and underscores, with `/` for folders.
+Write `sheets/<sheet>.txt` with one element name per line, left to right and top to bottom, such as `buttons/btn_yellow`. Names use lowercase letters, digits and underscores, with `/` for folders.
 
 Check each sheet by eye before slicing. Regenerate it if elements overlap, contain text, drift from the anchor, or are missing.
 
@@ -216,13 +225,13 @@ The script reads real alpha when present, otherwise it keys out a flat backgroun
 Suggest 9-slice for elements that stretch, then derive button states:
 
 ```bash
-py -3 <skill>/scripts/uikit.py nineslice ui_art/<kit> --match "panels/*" --match "buttons/*_normal"
+py -3 <skill>/scripts/uikit.py nineslice ui_art/<kit> --match "popups/*" --match "buttons/btn_*"
 ```
 ```bash
 py -3 <skill>/scripts/uikit.py nineslice ui_art/<kit> --match "bars/*" --axis horizontal
 ```
 ```bash
-py -3 <skill>/scripts/uikit.py states ui_art/<kit> --match "buttons/*_normal"
+py -3 <skill>/scripts/uikit.py states ui_art/<kit> --match "buttons/btn_*"
 ```
 
 Prefer derived states, because separately generated states rarely line up pixel for pixel. Generate a state with AI only when it needs a different drawing, such as a locked state with a padlock.
@@ -289,7 +298,7 @@ Run only on the `export` command or when the user says the screens are final.
 
 **2. Ask about other art, every time.** Only UI is redrawn by default: buttons, panels, bars, frames, tabs, icons. Characters, environments, props and other illustration need approval first. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`, then list them and ask: redraw them, or keep them as images? Keep them as images if the answer is no. The script finds likely art by name, and refuses with `NEEDS_ART_CHOICE` until `--art redraw|image` is given. Ask this in the same message as the background question.
 
-**3. Name layers.** A sprite imported from the user's kit is named by its original file name, the same on every use, and stays an image layer holding the user's file, so the user's own layer export does not duplicate resources. Never override that with `name`. Pass `--redraw-kit` only if the user asks for kit sprites as shapes too. Name everything else, which is what you created, by `function_description_color_screen`, where color and screen are optional: `icon_settings`, `button_normal_blue`, `bg_character_battle`. Without a `name`, one comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
+**3. Name layers.** A sprite imported from the user's kit is named by its original file name, the same on every use, and stays an image layer holding the user's file, so the user's own layer export does not duplicate resources. Never override that with `name`. Pass `--redraw-kit` only if the user asks for kit sprites as shapes too. Name everything else, which is what you created, by [references/ui_kit_standard.md](references/ui_kit_standard.md): `<function>_<description>[_<color>][_<screen>]` with its prefixes, such as `btn_yellow`, `title_red`, `set_coin_2`, `icon_settings`, `bg_main`. Without a `name`, one comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
 
 **4. Build.** Choose a variant first with `confirm` where needed.
 

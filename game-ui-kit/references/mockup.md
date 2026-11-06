@@ -10,7 +10,7 @@ One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.js
   "items": [
     {"element": "panels/shop_panel", "x": 540, "y": 960, "w": 980, "h": 1400, "anchor": "center"},
     {"text": "Cửa hàng", "x": 540, "y": 330, "w": 700, "h": 90, "anchor": "center", "text_size": 64, "text_stroke": 3},
-    {"element": "buttons/btn_buy_normal", "x": 540, "y": 1500, "w": 420, "h": 130, "anchor": "center", "text": "Mua", "text_size": 48},
+    {"element": "buttons/btn_yellow", "x": 540, "y": 1500, "w": 420, "h": 130, "anchor": "center", "text": "Mua", "text_size": 48},
     {"element": "icons/ruby", "x": 200, "y": 700, "w": 140}
   ]
 }
@@ -64,6 +64,6 @@ The `mockup` command warns about small tap targets, items too near the edge or o
 ## Notes
 
 - Show a progress bar with its track as one item and its fill on top with `fill`, sized slightly inside the track.
-- Use `_pressed` or `_disabled` elements only to show those states, otherwise `_normal`.
+- Use `_pressed` or `_disabled` elements only to show those states, otherwise the bare name, such as `btn_yellow`.
 - A missing element draws as a red `MISSING` box and exits with status 2.
 - Unknown keys are rejected, so a typo cannot silently change the layout.

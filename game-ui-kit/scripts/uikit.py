@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn UI sheets and loose sprites into a named kit with 9-slice data and checks.
 
-Commands: slice, import, backdrop, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, confirm, flow,
+Commands: slice, import, backdrop, shapes, nineslice, states, palette, fonts, compare, wireframe, mockup, choose, confirm, flow,
 export, psd, vectorize, unity, resize-layout, device, spec, info, qa.
 Run any of them with --help.
 Exit codes: 0 ok, 1 usage or input error, 2 result needs a fix (see output).
@@ -740,9 +740,11 @@ def cmd_nineslice(args) -> int:
 def cmd_states(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
-    names = [n for n in selected(manifest, args.match) if n.endswith("_normal")]
+    # The normal state is the bare name (btn_yellow) or, in older kits, ends in _normal.
+    names = [n for n in selected(manifest, args.match)
+             if (n.endswith("_normal") or not STATE_RE.search(n)) and not manifest["elements"][n].get("derived_from")]
     if not names:
-        die("NO_MATCH", f"no *_normal elements match {args.match}", 1)
+        die("NO_MATCH", f"no normal-state elements match {args.match}", 1)
     written = skipped = 0
     for name in names:
         entry = manifest["elements"][name]
@@ -753,7 +755,7 @@ def cmd_states(args) -> int:
             "pressed": np.concatenate([rgb * 0.8, alpha], axis=2),
             "disabled": np.concatenate([rgb * 0.2 + gray * 0.8, alpha], axis=2),
         }
-        base = name[: -len("_normal")]
+        base = name[: -len("_normal")] if name.endswith("_normal") else name
         for state, pixels in variants.items():
             derived = f"{base}_{state}"
             target = kit / "elements" / f"{derived}.png"
@@ -1034,6 +1036,82 @@ def cmd_backdrop(args) -> int:
     return 0
 
 
+def draw_shape(kind: str, corner: int, outline: int, size: int = 256, scale: int = 4) -> Image.Image:
+    """One white shape on a transparent square frame, drawn large and reduced for smooth edges."""
+    big, r, w = size * scale, corner * scale, outline * scale
+    mask = Image.new("L", (big, big), 0)
+    draw = ImageDraw.Draw(mask)
+
+    def solid(inset: int, value: int):
+        if kind == "circle":
+            draw.ellipse([inset, inset, big - 1 - inset, big - 1 - inset], fill=value)
+            return
+        if kind == "rectangle":
+            draw.rounded_rectangle([inset, inset, big - 1 - inset, big - 1 - inset], radius=max(0, r - inset), fill=value)
+            return
+        # Equilateral triangle filling the frame width, centered vertically; an inset of d moves
+        # each side in by d, which moves each vertex 2d from the centroid.
+        side = big - 1
+        height = side * 3 ** 0.5 / 2
+        top = (big - height) / 2
+        cx, cy = big / 2, top + height * 2 / 3
+        base = [(cx, top), (cx + side / 2, top + height), (cx - side / 2, top + height)]
+
+        def toward_center(points, distance):
+            out = []
+            for x, y in points:
+                length = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                k = max(0.0, (length - distance) / length)
+                out.append((cx + (x - cx) * k, cy + (y - cy) * k))
+            return out
+
+        radius = max(0, r - inset)
+        inner = toward_center(base, 2 * inset)
+        if radius:
+            core = toward_center(inner, 2 * radius)
+            draw.polygon(core, fill=value)
+            draw.line(core + [core[0]], fill=value, width=round(radius * 2), joint="curve")
+            for x, y in core:
+                draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=value)
+        else:
+            draw.polygon(inner, fill=value)
+
+    solid(0, 255)
+    if w:
+        solid(w, 0)
+    mask = mask.resize((size, size), Image.LANCZOS)
+    image = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    image.putalpha(mask)
+    return image
+
+
+def cmd_shapes(args) -> int:
+    """Draw the standard's common shapes: square, circle and triangle, plain, outlined and with round corners."""
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    written = skipped = 0
+    for kind in ("rectangle", "circle", "poly"):
+        corners = (0,) if kind == "circle" else (0, 8, 12)
+        for corner in corners:
+            for outline in (0, 4):
+                name = "shapes/shape_" + kind + (f"_{corner}px" if corner else "") + ("_outline" if outline else "")
+                target = kit / "elements" / f"{name}.png"
+                if name in manifest["elements"] and not args.force:
+                    skipped += 1
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                draw_shape(kind, corner, outline).save(target)
+                manifest["elements"][name] = {
+                    "file": target.relative_to(kit).as_posix(), "width": 256, "height": 256,
+                    "has_transparency": True, "key_color": None, "touches_sheet_edge": False, "nine_slice": None,
+                    "drawn_by": "shapes",
+                }
+                written += 1
+    save_manifest(kit, manifest)
+    print(f"Wrote {written} shapes, kept {skipped} existing. All solid white on transparent 256 px frames.")
+    return 0
+
+
 def build_layers(kit: Path, layout: dict, manifest: dict):
     """Turn a layout into ordered layers. PNG mockups and PSD exports both draw from this."""
     size = tuple(layout["size"])
@@ -1093,7 +1171,7 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
         x0, y0, x1, y1 = box
         label = name or str(item.get("text"))
         boxes.append({"name": label, "box": box, "sprite": bool(sprite),
-                      "touch": "goto" in item or bool(name and "_normal" in name)})
+                      "touch": "goto" in item or bool(name and ("_normal" in name or name.split("/")[-1].startswith("btn_")))})
         if sprite is not None:
             if item.get("opacity", 1) < 1:
                 sprite = sprite.copy()
@@ -1628,9 +1706,16 @@ def cmd_info(args) -> int:
     good, stale = confirmed_screens(kit)
     wire_ok, wire_changed = wireframe_confirmed(kit) if screens else (False, [])
     exports = sorted(p.stem for p in (kit / "export" / "psd").glob("*.psd"))
+    brief = read("brief.json")
+    has_demo = (kit / "demo" / "index.html").exists()
+    demo_due = bool(brief and brief.get("prototype") and screens and wire_ok and not has_demo)
 
-    if not elements and not screens:
+    if not brief and not screens:
+        step = "Run wireframe create, which first asks the wireframe questions."
+    elif not elements and not screens:
         step = "Load a kit, or start with wireframe create."
+    elif demo_due:
+        step = "The wireframe is approved and the brief asked for a prototype: run flow --wireframe."
     elif not elements:
         step = "Confirm the wireframe, then create art with asset."
     elif not screens:
@@ -1663,7 +1748,9 @@ def cmd_info(args) -> int:
         "fonts": [p.name for p in kit_fonts(kit)] or "none, system font in use",
         "wireframe_confirmed": wire_ok, "wireframe_changed": wire_changed,
         "confirmed_screens": sorted(good), "changed_since_confirmed": sorted(stale),
-        "flow_demo": (kit / "demo" / "index.html").exists(),
+        "brief": {"game_type": brief.get("game_type"), "size": brief.get("size"), "prototype": brief.get("prototype")}
+                 if brief else "not answered",
+        "flow_demo": has_demo,
         "exported_psd": exports,
         "next_step": step,
     }
@@ -1671,10 +1758,13 @@ def cmd_info(args) -> int:
     return 0
 
 
-FAMILY_FUNCTION = {"buttons": "button", "icons": "icon", "hud": "icon", "menu": "icon", "navigation": "icon",
-                   "currency": "icon", "shop": "icon", "controls": "button", "panels": "panel", "bars": "bar",
-                   "frames": "frame", "backdrops": "bg", "backgrounds": "bg",
-                   "characters": "char", "items": "item"}
+FAMILY_FUNCTION = {"buttons": "btn", "icons": "icon", "hud": "icon", "menu": "icon", "navigation": "icon",
+                   "currency": "set", "shop": "icon", "controls": "btn", "panels": "popup", "popups": "popup",
+                   "titles": "title", "bars": "bar", "frames": "frame", "rewards": "reward", "shapes": "shape",
+                   "tabs": "tab", "slots": "slot", "badges": "badge", "patterns": "pattern",
+                   "backdrops": "bg", "backgrounds": "bg", "characters": "char", "items": "item"}
+NAME_PREFIXES = ("btn", "popup", "title", "bg", "pattern", "icon", "set", "shape", "reward", "loading_bar",
+                 "frame", "tab", "bar", "slot", "badge", "char", "item")
 PSD_NAME_RE = re.compile(r"^[a-z]+(_[a-z0-9]+)+$")
 DEFAULT_CANVAS = (1920, 1080)
 ART_NAME_RE = re.compile(r"(^|[/_])(characters?|char|avatars?|heroes|hero|npcs?|enem(y|ies)|monsters?|pets?|mounts?|"
@@ -1703,7 +1793,9 @@ def element_layer_name(name: str) -> str:
     family, _, leaf = name.rpartition("/")
     function = FAMILY_FUNCTION.get(family.split("/")[-1], family.split("/")[-1].rstrip("s") or "item")
     leaf = slug(leaf)
-    return leaf if leaf.startswith(f"{function}_") else f"{function}_{leaf}"
+    if any(leaf == prefix or leaf.startswith(f"{prefix}_") for prefix in NAME_PREFIXES):
+        return leaf
+    return f"{function}_{leaf}"
 
 
 def trace_contours(mask: np.ndarray) -> list[list[tuple[int, int]]]:
@@ -2711,6 +2803,11 @@ def main() -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_backdrop)
 
+    p = commands.add_parser("shapes", help="Draw the standard common shapes in white, without image generation")
+    p.add_argument("kit")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_shapes)
+
     p = commands.add_parser("palette", help="Record the kit's tone from an image or chosen colors")
     p.add_argument("kit")
     p.add_argument("image", nargs="?", help="Reference image")
@@ -2741,7 +2838,7 @@ def main() -> int:
     p.add_argument("--min-share", type=float, default=0.08, help="Minimum stretch band as a share of size")
     p.set_defaults(func=cmd_nineslice)
 
-    p = commands.add_parser("states", help="Derive pressed and disabled from *_normal elements")
+    p = commands.add_parser("states", help="Derive pressed and disabled from normal-state elements")
     p.add_argument("kit")
     p.add_argument("--match", action="append", required=True)
     p.add_argument("--force", action="store_true", help="Replace existing derived files")

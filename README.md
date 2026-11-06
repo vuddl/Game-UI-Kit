@@ -50,6 +50,18 @@ $game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu 
 
 **Nền và art, cả hai vai trò:** màn nào cũng có nền. Màn thường dùng nền và pattern của kit trước. HUD có ảnh cảnh vẽ theo art style của game. Popup dùng màn cha làm mờ (`backdrop`). Nhân vật và vật phẩm không có trong kit thì skill tự tạo, hiển thị bằng hình thay vì chữ.
 
+### Bảng hỏi khi tạo wireframe
+
+`$gui-wireframe create` luôn bắt đầu bằng 7 câu hỏi đánh số: hướng màn hoặc kích thước tự nhập, các màn cần làm, thể loại game, gameplay, chức năng từng màn, nội dung từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), và có tạo prototype không. Trả lời trên một dòng, ví dụ:
+
+```text
+1b | 2: 1, 6, Other: Gacha | 3: 13 | 4: ... | 5: ... | 6: ... | 7b
+```
+
+Câu thể loại và gameplay chỉ hỏi ở wireframe đầu tiên của một game mới. Câu trả lời lưu trong `brief.json`. Bước đầu chỉ vẽ ảnh wireframe. Sau khi bạn chỉnh và chốt bằng `$gui-confirm wireframe`, prototype mới được tạo, và chỉ khi câu 7 chọn có.
+
+Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
+
 ## Lệnh
 
 Gõ `$gui` trong Codex để thấy danh sách.
@@ -58,7 +70,7 @@ Gõ `$gui` trong Codex để thấy danh sách.
 |---|---|
 | `$gui-info` | Xem các lệnh, tình trạng kit và bước tiếp theo |
 | `$gui-kit <đường dẫn>` | Nạp UI kit có sẵn |
-| `$gui-wireframe create <mô tả>` | Tạo wireframe và luồng |
+| `$gui-wireframe create <mô tả>` | Hỏi bảng câu hỏi, rồi vẽ ảnh wireframe. Chưa tạo prototype |
 | `$gui-wireframe adjust <mô tả>` | Sửa wireframe bằng lời |
 | `$gui-tone [auto\|game\|ref]` | Xem hoặc đổi nguồn tông màu |
 | `$gui-asset <mô tả>` | Tạo sprite còn thiếu, có tốn hạn mức ảnh |
@@ -69,7 +81,7 @@ Gõ `$gui` trong Codex để thấy danh sách.
 | `$gui-review <màn>` | AI nhận xét màn hình |
 | `$gui-device <màn>` | Thử trên nhiều tỷ lệ màn hình |
 | `$gui-check` | Kiểm tra lỗi và độ khớp tông màu |
-| `$gui-confirm wireframe` | Chốt wireframe |
+| `$gui-confirm wireframe` | Chốt wireframe, tạo prototype nếu bảng hỏi chọn có |
 | `$gui-confirm <màn> [v2]` | Chốt mockup một màn |
 | `$gui-flow` | Tạo demo bấm thử và sơ đồ luồng |
 | `$gui-spec` | Tạo tài liệu bàn giao |
