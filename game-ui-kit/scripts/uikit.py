@@ -1716,8 +1716,6 @@ def cmd_info(args) -> int:
         step = "Load a kit, or start with wireframe create."
     elif demo_due:
         step = "The wireframe is approved and the brief asked for a prototype: run flow --wireframe."
-    elif not (brief or {}).get("visual") and (wire_ok or not screens):
-        step = "Run visual to answer the visual questions before any art is made."
     elif not elements:
         step = "Confirm the wireframe, then create art with asset."
     elif not screens:
@@ -1750,8 +1748,7 @@ def cmd_info(args) -> int:
         "fonts": [p.name for p in kit_fonts(kit)] or "none, system font in use",
         "wireframe_confirmed": wire_ok, "wireframe_changed": wire_changed,
         "confirmed_screens": sorted(good), "changed_since_confirmed": sorted(stale),
-        "brief": {"game_type": brief.get("game_type"), "size": brief.get("size"), "prototype": brief.get("prototype"),
-                  "visual": "answered" if brief.get("visual") else "not answered"}
+        "brief": {"game_type": brief.get("game_type"), "size": brief.get("size"), "prototype": brief.get("prototype")}
                  if brief else "not answered",
         "flow_demo": has_demo,
         "exported_psd": exports,

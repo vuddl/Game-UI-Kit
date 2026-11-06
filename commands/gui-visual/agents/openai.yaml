@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI visual"
-  short_description: "Answer the visual questions before making UI art"
-policy:
-  allow_implicit_invocation: false

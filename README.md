@@ -60,16 +60,6 @@ $game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu 
 
 Câu thể loại và gameplay chỉ hỏi ở wireframe đầu tiên của một game mới. Câu trả lời lưu trong `brief.json`. Bước đầu chỉ vẽ ảnh wireframe. Sau khi bạn chỉnh và chốt bằng `$gui-confirm wireframe`, prototype mới được tạo, và chỉ khi câu 7 chọn có.
 
-### Bảng hỏi khi tạo UI visual
-
-`$gui-visual` hỏi 3 câu trước khi làm art:
-
-1. File wireframe. Nếu kit đã có wireframe đã chốt thì dùng luôn, chỉ trả lời khi muốn thay.
-2. Có UI kit không: có thì add kit kèm mô tả. Không thì chọn có ảnh reference (không giới hạn số ảnh, kèm mô tả) hoặc tự sáng tạo theo mô tả (màu sắc, UI style chọn từ danh sách, mô tả thêm).
-3. Có background sẵn không: có thì add file. Không thì chọn lọc từ UI kit hoặc tạo mới theo art style, kèm mô tả nếu muốn.
-
-Ví dụ trả lời: `1: D:\wf\home.png | 2b1: D:\ref\a.png, D:\ref\b.png - giống a nhưng ấm hơn | 3b2`. Nếu chạy `asset` hay `mockup` khi chưa trả lời thì skill sẽ hỏi bảng này trước.
-
 Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
 
 ## Lệnh
@@ -92,13 +82,12 @@ Gõ `$gui` trong Codex để thấy danh sách.
 | `$gui-device <màn>` | Thử trên nhiều tỷ lệ màn hình |
 | `$gui-check` | Kiểm tra lỗi và độ khớp tông màu |
 | `$gui-confirm wireframe` | Chốt wireframe, tạo prototype nếu bảng hỏi chọn có |
-| `$gui-visual` | Hỏi bảng câu hỏi visual: wireframe, UI kit hoặc ref hoặc art style, background |
 | `$gui-confirm <màn> [v2]` | Chốt mockup một màn |
 | `$gui-flow` | Tạo demo bấm thử và sơ đồ luồng |
 | `$gui-spec` | Tạo tài liệu bàn giao |
 | `$gui-export` | Xuất PSD sửa được cho các màn đã chốt |
 | `$gui-export unity` | Xuất JSON mapping cho Unity |
 
-Thứ tự: `wireframe create`, `wireframe adjust`, `confirm wireframe`, `visual`, `asset`, `mockup`, `mockup adjust`, `confirm <màn>`, `flow`, `export`.
+Thứ tự: `kit` (nếu có), `wireframe create`, `wireframe adjust`, `confirm wireframe`, `asset`, `mockup`, `mockup adjust`, `confirm <màn>`, `flow`, `export`.
 
 Kết quả nằm trong `ui_art/<tên_kit>/`: sprite ở `elements/`, mockup ở `preview/mockups/`, demo ở `demo/index.html`, file xuất ở `export/`. PSD có text thật, group theo quan hệ cha con, shape cho hình đủ đơn giản và smart object cho hình phức tạp. Mockup, PSD và JSON chưa phải màn hình dựng trong game engine.
