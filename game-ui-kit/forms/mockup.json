@@ -1,0 +1,101 @@
+{
+  "id": "mockup",
+  "title": "Tạo UI visual mockup",
+  "intro": "Mô tả một màn mockup.",
+  "questions": [
+    {
+      "id": "screen",
+      "type": "single",
+      "title": "Màn nào?",
+      "required": true,
+      "options_from": "kit:screens+catalog:screens",
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn"}
+    },
+    {
+      "id": "wireframe",
+      "type": "files",
+      "title": "Add wireframe",
+      "hint": "PNG, JPG hoặc ZIP. Wireframe đã làm bằng $wireframe được điền sẵn.",
+      "required": true,
+      "default_from": "kit:wireframes"
+    },
+    {
+      "id": "kit",
+      "type": "single",
+      "title": "Có UI kit không?",
+      "required": true,
+      "options": [
+        {"value": "yes", "label": "Có", "attach": true, "attach_required": true, "describe": true,
+         "attach_hint": "Bộ UI kit: PNG, PSD hoặc ZIP"},
+        {"value": "no", "label": "Không"}
+      ]
+    },
+    {
+      "id": "start",
+      "type": "single",
+      "title": "Có reference không hay tự sáng tạo theo mô tả?",
+      "required": true,
+      "show_if": {"question": "kit", "in": ["no"]},
+      "options": [
+        {"value": "reference", "label": "Có reference", "attach": true, "attach_required": true, "describe": true,
+         "attach_hint": "Không giới hạn số ảnh"},
+        {"value": "describe", "label": "Không có reference, tự sáng tạo theo mô tả"}
+      ]
+    },
+    {
+      "id": "colors",
+      "type": "text",
+      "title": "Màu sắc gì?",
+      "show_if": {"question": "start", "in": ["describe"]}
+    },
+    {
+      "id": "theme",
+      "type": "single",
+      "title": "Màu tươi sáng hay dark theme?",
+      "required": true,
+      "show_if": {"question": "start", "in": ["describe"]},
+      "options": [
+        {"value": "bright", "label": "Tươi sáng"},
+        {"value": "dark", "label": "Dark theme"}
+      ]
+    },
+    {
+      "id": "ui_style",
+      "type": "single",
+      "title": "UI style gì?",
+      "required": true,
+      "show_if": {"question": "start", "in": ["describe"]},
+      "options_from": "catalog:art_styles",
+      "other": {"label": "Khác", "placeholder": "Tên hoặc mô tả style"}
+    },
+    {
+      "id": "style_note",
+      "type": "text",
+      "title": "Mô tả thêm",
+      "multiline": true,
+      "show_if": {"question": "start", "in": ["describe"]}
+    },
+    {
+      "id": "background",
+      "type": "single",
+      "title": "Có background sẵn không?",
+      "required": true,
+      "describe": true,
+      "describe_label": "Mô tả thêm (không bắt buộc)",
+      "options": [
+        {"value": "provided", "label": "Có", "attach": true, "attach_required": true},
+        {"value": "from_kit", "label": "Không, tự chọn lọc trong UI kit", "show_if": {"question": "kit", "in": ["yes"]}},
+        {"value": "generate", "label": "Không, tự tạo background mới theo art style"}
+      ]
+    },
+    {
+      "id": "options",
+      "type": "number",
+      "title": "Tạo mấy option?",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "default": 1
+    }
+  ]
+}

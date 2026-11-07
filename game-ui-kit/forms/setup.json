@@ -1,0 +1,36 @@
+{
+  "id": "setup",
+  "title": "Định hình game",
+  "intro": "Thông tin chung của game. Các lệnh $wireframe và $mockup đều dùng theo setup này.",
+  "questions": [
+    {
+      "id": "orientation",
+      "type": "single",
+      "title": "Màn ngang hay dọc?",
+      "required": true,
+      "options": [
+        {"value": "portrait", "label": "Dọc", "hint": "1080 × 1920"},
+        {"value": "landscape", "label": "Ngang", "hint": "1920 × 1080"},
+        {"value": "custom", "label": "Tự nhập kích thước", "fields": [
+          {"id": "width", "label": "Rộng (px)", "type": "number", "required": true},
+          {"id": "height", "label": "Cao (px)", "type": "number", "required": true}
+        ]}
+      ]
+    },
+    {
+      "id": "game_type",
+      "type": "single",
+      "title": "Thể loại game gì?",
+      "required": true,
+      "options_from": "catalog:game_types",
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên thể loại"}
+    },
+    {
+      "id": "gameplay",
+      "type": "text",
+      "title": "Mô tả sơ lược về gameplay",
+      "required": true,
+      "multiline": true
+    }
+  ]
+}

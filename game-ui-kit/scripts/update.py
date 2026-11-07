@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Install or update game-ui-kit and its gui-* commands from GitHub, or from a local zip."""
+"""Install or update game-ui-kit and its commands ($setup, $wireframe, $mockup, $reset) from GitHub or a local zip.
+
+Removes the old gui-* commands and any command an earlier install added that is gone now."""
+import json
 import argparse
 import io
 import os
@@ -38,18 +41,32 @@ def main() -> int:
                     print(f"Unsafe path in the archive, nothing changed: {member}", file=sys.stderr)
                     return 1
             archive.extractall(stage)
-        roots = [p for p in stage.rglob("SKILL.md") if p.parent.name == "game-ui-kit" or p.parent.name.startswith("gui-")]
+        roots = [p for p in stage.rglob("SKILL.md")
+                 if p.parent.name == "game-ui-kit" or p.parent.parent.name == "commands"]
         folders = [p.parent for p in roots]
         if not any(f.name == "game-ui-kit" for f in folders):
             print("The archive has no game-ui-kit skill, nothing changed.", file=sys.stderr)
             return 1
         skills.mkdir(parents=True, exist_ok=True)
+        record = skills / ".game-ui-kit.json"
+        try:
+            earlier = set(json.loads(record.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            earlier = set()
+        names = {f.name for f in folders}
+        stale = sorted((earlier - names) | {p.name for p in skills.glob("gui-*") if p.is_dir()})
+        for name in stale:
+            shutil.rmtree(skills / name, ignore_errors=True)
         for folder in folders:
             target = skills / folder.name
             if target.exists():
                 shutil.rmtree(target)
             shutil.copytree(folder, target)
-    print(f"Installed {len(folders)} skills in {skills}. Open a new Codex session to use them.")
+        record.write_text(json.dumps(sorted(names)), encoding="utf-8")
+    print(f"Installed {len(folders)} skills in {skills}: {', '.join(sorted(names))}.")
+    if stale:
+        print(f"Removed old commands: {', '.join(stale)}.")
+    print("Open a new Codex session to use them.")
     return 0
 
 

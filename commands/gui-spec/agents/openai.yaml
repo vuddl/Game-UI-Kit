@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI spec"
-  short_description: "Write a game UI handoff table for developers"
-policy:
-  allow_implicit_invocation: false

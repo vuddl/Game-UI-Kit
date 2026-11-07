@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI flow"
-  short_description: "Build the clickable game UI flow demo"
-policy:
-  allow_implicit_invocation: false

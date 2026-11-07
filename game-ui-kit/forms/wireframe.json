@@ -1,0 +1,61 @@
+{
+  "id": "wireframe",
+  "title": "Tạo wireframe",
+  "intro": "Mô tả một màn. Hướng màn lấy theo $setup.",
+  "questions": [
+    {
+      "id": "screen",
+      "type": "single",
+      "title": "Màn tính năng gì?",
+      "required": true,
+      "options_from": "catalog:screens",
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn"}
+    },
+    {
+      "id": "function",
+      "type": "text",
+      "title": "Mô tả chức năng màn",
+      "required": true,
+      "multiline": true
+    },
+    {
+      "id": "areas",
+      "type": "fields",
+      "title": "Mô tả từng vùng",
+      "hint": "Vùng để trống thì Codex tự quyết.",
+      "fields_by": {
+        "context": "orientation",
+        "portrait": [
+          {"id": "top", "label": "Top", "multiline": true},
+          {"id": "middle", "label": "Middle", "multiline": true},
+          {"id": "bottom", "label": "Bottom", "multiline": true}
+        ],
+        "landscape": [
+          {"id": "top", "label": "Top", "multiline": true},
+          {"id": "left", "label": "Left", "multiline": true},
+          {"id": "right", "label": "Right", "multiline": true},
+          {"id": "bottom", "label": "Bottom", "multiline": true}
+        ]
+      }
+    },
+    {
+      "id": "prototype",
+      "type": "single",
+      "title": "Có tạo prototype demo không?",
+      "required": true,
+      "options": [
+        {"value": "yes", "label": "Có"},
+        {"value": "no", "label": "Không"}
+      ]
+    },
+    {
+      "id": "options",
+      "type": "number",
+      "title": "Tạo mấy option?",
+      "required": true,
+      "min": 1,
+      "max": 5,
+      "default": 1
+    }
+  ]
+}

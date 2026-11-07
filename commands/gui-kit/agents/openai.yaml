@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI kit"
-  short_description: "Load an existing UI kit, then cut, organize and name it"
-policy:
-  allow_implicit_invocation: false

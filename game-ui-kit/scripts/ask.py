@@ -1,0 +1,491 @@
+#!/usr/bin/env python3
+"""Ask the user a form in their browser, served from localhost, and save the answers in the kit.
+
+    ask.py <form> <kit> --out briefs/<name>.json
+
+<form> is a file in the skill's forms/ folder: setup, wireframe, full, mockup or export.
+Prints a JSON line with the answers when the user submits. Attached files go to <kit>/inputs/.
+Nothing else is written: no copy of the form, no logs. Files in inputs/ that no answer file
+under <kit>/briefs/ refers to any more are deleted after every form.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+import unicodedata
+import webbrowser
+import zipfile
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+SKILL = Path(__file__).resolve().parent.parent
+FORMS = SKILL / "forms"
+CATALOG = SKILL / "references" / "catalog.md"
+ALLOWED = {".png", ".jpg", ".jpeg", ".webp", ".psd", ".zip"}
+FROM_ZIP = {".png", ".jpg", ".jpeg", ".webp", ".psd"}
+MAX_FILE = 300 * 1024 * 1024
+MAX_UNZIPPED = 1024 * 1024 * 1024
+MAX_MEMBERS = 3000
+SERVE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}
+
+
+def slug(text: str) -> str:
+    text = unicodedata.normalize("NFD", text or "").replace("đ", "d").replace("Đ", "D")
+    text = "".join(c for c in text if not unicodedata.combining(c)).lower()
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_") or "item"
+
+
+def read_json(path: Path, default=None):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+# ---------- option lists ----------
+
+def catalog_rows(heading: str) -> list[dict]:
+    text = CATALOG.read_text(encoding="utf-8")
+    part = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
+    rows = []
+    for line in part.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 3 and cells[0].isdigit():
+            rows.append({"value": slug(cells[1]), "label": cells[1], "hint": cells[2]})
+    return rows
+
+
+def catalog_screens() -> list[dict]:
+    text = CATALOG.read_text(encoding="utf-8").split("## Screens", 1)[1]
+    options = []
+    for line in text.splitlines():
+        match = re.match(r"\s*-\s*\*\*(.+?):\*\*\s*(.+)", line)
+        if match:
+            for name in match.group(2).split(","):
+                name = name.strip()
+                if name:
+                    options.append({"value": slug(name), "label": name, "group": match.group(1)})
+    return options
+
+
+VARIANT = re.compile(r"^(.*)__v(\d+)$")
+
+
+def kit_layouts(kit: Path) -> list[str]:
+    folder = kit / "mockups"
+    if not folder.exists():
+        return []
+    return sorted(p.stem for p in folder.glob("*.json") if p.stem not in ("chosen", "confirmed"))
+
+
+def screen_of(stem: str) -> str:
+    match = VARIANT.match(stem)
+    return match.group(1) if match else stem
+
+
+def kit_screens(kit: Path) -> list[dict]:
+    seen, options = set(), []
+    for stem in kit_layouts(kit):
+        screen = screen_of(stem)
+        if screen not in seen:
+            seen.add(screen)
+            options.append({"value": screen, "label": screen.replace("_", " ").title(), "group": "Đã có trong kit"})
+    return options
+
+
+def kit_mockups(kit: Path) -> list[dict]:
+    options = []
+    for stem in kit_layouts(kit):
+        match = VARIANT.match(stem)
+        label = f"{screen_of(stem).replace('_', ' ').title()}, option {match.group(2) if match else 1}"
+        image = f"preview/mockups/{stem}.png"
+        options.append({"value": stem, "label": label, "image": image if (kit / image).exists() else None})
+    return options
+
+
+def options_for(source: str, kit: Path) -> list[dict]:
+    options, seen = [], set()
+    for part in source.split("+"):
+        if part == "catalog:game_types":
+            found = catalog_rows("Game types")
+        elif part == "catalog:art_styles":
+            found = catalog_rows("Art styles")
+        elif part == "catalog:screens":
+            found = catalog_screens()
+        elif part == "kit:screens":
+            found = kit_screens(kit)
+        elif part == "kit:mockups":
+            found = kit_mockups(kit)
+        else:
+            raise SystemExit(f"Unknown options_from: {part}")
+        for option in found:
+            if option["value"] not in seen:
+                seen.add(option["value"])
+                options.append(option)
+    return options
+
+
+def setup_size(kit: Path):
+    setup = read_json(kit / "briefs" / "setup.json") or {}
+    return setup.get("size"), setup.get("orientation")
+
+
+def build_context(kit: Path) -> dict:
+    size, orientation = setup_size(kit)
+    context = {"kit": kit.resolve().name}
+    if orientation:
+        context["orientation"] = orientation
+        context["summary"] = f"Setup: {orientation}, {size[0]} × {size[1]}" if size else f"Setup: {orientation}"
+    return context
+
+
+def defaults_for(source: str, kit: Path):
+    if source == "kit:wireframes":
+        folder = kit / "preview" / "wireframes"
+        files = sorted(folder.glob("*.png")) if folder.exists() else []
+        return [{"path": p.relative_to(kit).as_posix(), "name": p.name, "note": ""} for p in files]
+    raise SystemExit(f"Unknown default_from: {source}")
+
+
+def load_form(name: str, kit: Path) -> dict:
+    path = FORMS / f"{name}.json"
+    if not path.exists():
+        raise SystemExit(f"No form {name}. Forms: {sorted(p.stem for p in FORMS.glob('*.json'))}")
+    form = read_json(path)
+    for question in form["questions"]:
+        if "options_from" in question:
+            question["options"] = question.get("options", []) + options_for(question.pop("options_from"), kit)
+    return form
+
+
+# ---------- answers ----------
+
+def answer_paths(kit: Path) -> list[Path]:
+    briefs = kit / "briefs"
+    return sorted(briefs.rglob("*.json")) if briefs.exists() else []
+
+
+def referenced_files(value, found: set[str]) -> None:
+    if isinstance(value, dict):
+        path = value.get("path")
+        if isinstance(path, str):
+            found.add(path.replace("\\", "/"))
+        for item in value.values():
+            referenced_files(item, found)
+    elif isinstance(value, list):
+        for item in value:
+            referenced_files(item, found)
+
+
+def clean_inputs(kit: Path) -> int:
+    """Delete files in inputs/ that no answer file refers to, and empty folders."""
+    inputs = kit / "inputs"
+    if not inputs.exists():
+        return 0
+    used: set[str] = set()
+    for path in answer_paths(kit):
+        referenced_files(read_json(path, {}), used)
+    removed = 0
+    for path in sorted(inputs.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        rel = path.relative_to(kit).as_posix()
+        if path.is_file() and rel not in used:
+            path.unlink()
+            removed += 1
+        elif path.is_dir() and not any(path.iterdir()):
+            path.rmdir()
+    if inputs.exists() and not any(inputs.iterdir()):
+        inputs.rmdir()
+    return removed
+
+
+def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
+    """Derive the fields the skill needs from the raw answers."""
+    record = {"form": form_id, "submitted": datetime.now(timezone.utc).isoformat(timespec="seconds"), "answers": answers}
+    if form_id == "setup":
+        choice = (answers.get("orientation") or {}).get("value") or {}
+        if choice.get("choice") == "custom":
+            fields = choice.get("fields") or {}
+            width, height = int(fields.get("width") or 0), int(fields.get("height") or 0)
+            if width < 64 or height < 64:
+                raise ValueError("Kích thước phải từ 64 px trở lên.")
+            orientation = "portrait" if height > width else "landscape"
+        elif choice.get("choice") == "landscape":
+            width, height, orientation = 1920, 1080, "landscape"
+        else:
+            width, height, orientation = 1080, 1920, "portrait"
+        record["size"], record["orientation"] = [width, height], orientation
+        game = (answers.get("game_type") or {}).get("value") or {}
+        record["game_type"] = game.get("label")
+        record["gameplay"] = (answers.get("gameplay") or {}).get("value")
+    if form_id in ("wireframe", "mockup"):
+        screen = (answers.get("screen") or {}).get("value") or {}
+        record["screen"] = screen.get("choice") if screen.get("choice") != "other" else slug(screen.get("label"))
+        record["screen_label"] = screen.get("label")
+        record["options"] = int((answers.get("options") or {}).get("value") or 1)
+    if form_id == "wireframe":
+        record["prototype"] = ((answers.get("prototype") or {}).get("value") or {}).get("choice") == "yes"
+    if form_id == "full":
+        record["screens"] = [{"screen": e["choice"] if e["choice"] != "other" else slug(e.get("label")),
+                              "label": e.get("label"), "note": e.get("note", ""), "files": e.get("files", [])}
+                             for e in (answers.get("screens") or {}).get("value") or []]
+    if form_id == "export":
+        record["formats"] = [e["choice"] for e in (answers.get("format") or {}).get("value") or []]
+        record["layouts"] = [e["choice"] for e in (answers.get("layouts") or {}).get("value") or []]
+    return record
+
+
+# ---------- uploads ----------
+
+def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes) -> list[dict]:
+    ext = Path(name).suffix.lower()
+    if ext not in ALLOWED:
+        raise ValueError(f"Chỉ nhận {', '.join(sorted(ALLOWED))}")
+    parts = [slug(p) for p in where.split("/") if p.strip()] or ["files"]
+    folder = kit / "inputs" / slug(form_id) / Path(*parts)
+    digest = hashlib.sha256(data).hexdigest()[:10]
+    stem = slug(Path(name).stem)
+    folder.mkdir(parents=True, exist_ok=True)
+    if ext != ".zip":
+        same = sorted(folder.glob(f"{digest}_*{ext}"))
+        target = same[0] if same else folder / f"{digest}_{stem}{ext}"
+        if not target.exists():
+            target.write_bytes(data)
+        return [{"path": target.relative_to(kit).as_posix(), "name": name}]
+    out = folder / f"{digest}_{stem}"
+    files = []
+    import io
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        members = [m for m in archive.infolist() if not m.is_dir() and Path(m.filename).suffix.lower() in FROM_ZIP
+                   and not Path(m.filename).name.startswith(".") and "__MACOSX" not in m.filename]
+        if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_UNZIPPED:
+            raise ValueError("File ZIP quá lớn.")
+        for member in members:
+            rel = [slug(Path(p).stem) if i == len(Path(member.filename).parts) - 1 else slug(p)
+                   for i, p in enumerate(Path(member.filename).parts)]
+            target = out.joinpath(*rel[:-1], rel[-1] + Path(member.filename).suffix.lower())
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.exists():
+                target.write_bytes(archive.read(member))
+            files.append({"path": target.relative_to(kit).as_posix(), "name": member.filename})
+    if not files:
+        raise ValueError("File ZIP không có ảnh hoặc PSD nào.")
+    return files
+
+
+# ---------- server ----------
+
+class FormServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, kit: Path, form: dict, out: Path, prefill: dict):
+        super().__init__(("127.0.0.1", 0), Handler)
+        self.kit, self.form, self.out, self.prefill = kit, form, out, prefill
+        self.result = None
+        self.done = threading.Event()
+
+
+class Handler(BaseHTTPRequestHandler):
+    server: FormServer
+
+    def log_message(self, *args):
+        pass
+
+    def send(self, code: int, body: bytes, kind: str = "application/json") -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_json(self, code: int, data) -> None:
+        self.send(code, json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        if url.path in ("/", "/index.html"):
+            self.send(200, (FORMS / "form.html").read_bytes(), "text/html; charset=utf-8")
+        elif url.path == "/spec":
+            self.send_json(200, {"form": self.server.form, "context": build_context(self.server.kit),
+                                 "prefill": self.server.prefill})
+        elif url.path == "/kitfile":
+            rel = (parse_qs(url.query).get("p") or [""])[0]
+            kit = self.server.kit.resolve()
+            path = (kit / rel).resolve()
+            if kit not in path.parents or path.suffix.lower() not in SERVE_TYPES or not path.is_file():
+                self.send_json(404, {"error": "not found"})
+                return
+            self.send(200, path.read_bytes(), SERVE_TYPES[path.suffix.lower()])
+        else:
+            self.send_json(404, {"error": "not found"})
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        length = int(self.headers.get("Content-Length") or 0)
+        if length > MAX_FILE:
+            self.send_json(413, {"error": "File quá lớn (tối đa 300 MB)."})
+            return
+        data = self.rfile.read(length)
+        try:
+            if url.path == "/upload":
+                query = parse_qs(url.query)
+                files = store_upload(self.server.kit, self.server.form["id"], (query.get("where") or ["files"])[0],
+                                     (query.get("name") or ["file"])[0], data)
+                self.send_json(200, {"files": files})
+            elif url.path == "/submit":
+                if self.server.done.is_set():
+                    self.send_json(409, {"error": "Form này đã được gửi."})
+                    return
+                answers = json.loads(data.decode("utf-8"))["answers"]
+                record = apply_answers(self.server.form["id"], self.server.kit, answers)
+                self.server.out.parent.mkdir(parents=True, exist_ok=True)
+                self.server.out.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+                self.server.result = record
+                self.send_json(200, {"ok": True})
+                self.server.done.set()
+            else:
+                self.send_json(404, {"error": "not found"})
+        except (ValueError, KeyError, zipfile.BadZipFile) as exc:
+            self.send_json(400, {"error": str(exc)})
+
+
+def wait_file(kit: Path) -> Path:
+    return kit / ".gui" / "ask.json"
+
+
+def serve(args, kit: Path) -> int:
+    form = load_form(args.form, kit)
+    out = kit / args.out
+    old = read_json(out, {}) or {}
+    prefill = old.get("answers") or {}
+    for question in form["questions"]:
+        if question.get("default_from") and question["id"] not in prefill:
+            files = defaults_for(question["default_from"], kit)
+            if files:
+                prefill[question["id"]] = {"value": files}
+    server = FormServer(kit, form, out, prefill)
+    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    state = wait_file(kit)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps({"url": url, "out": args.out, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    print(f"FORM_URL {url}", flush=True)
+    if not args.no_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+    try:
+        finished = server.done.wait(args.timeout)
+        time.sleep(0.3)
+    except KeyboardInterrupt:
+        finished = False
+    server.shutdown()
+    removed = clean_inputs(kit)
+    if args.child:
+        info = read_json(state, {}) or {}
+        info.update({"finished": True, "submitted": bool(finished), "removed_unused_files": removed})
+        state.write_text(json.dumps(info), encoding="utf-8")
+    else:
+        try:
+            state.unlink()
+        except OSError:
+            pass
+    if not finished:
+        print(json.dumps({"status": "TIMEOUT", "message": "No answer before the timeout. Nothing was saved.",
+                          "removed_unused_files": removed}, ensure_ascii=False), flush=True)
+        return 4
+    print(json.dumps({"status": "SUBMITTED", "out": args.out, "removed_unused_files": removed,
+                      "record": server.result}, ensure_ascii=False), flush=True)
+    return 0
+
+
+def start_detached(args, kit: Path) -> int:
+    """Start the form server in the background and return once its URL is known."""
+    state = wait_file(kit)
+    if state.exists():
+        state.unlink()
+    command = [sys.executable, str(Path(__file__).resolve()), args.form, str(kit), "--out", args.out,
+               "--timeout", str(args.timeout), "--child"] + (["--no-browser"] if args.no_browser else [])
+    flags = 0
+    if os.name == "nt":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=flags, start_new_session=os.name != "nt")
+    for _ in range(100):
+        info = read_json(state)
+        if info:
+            print(f"FORM_URL {info['url']}")
+            print("The form is open. Run ask.py --wait with the same kit to get the answers.")
+            return 0
+        time.sleep(0.1)
+    print("The form server did not start.", file=sys.stderr)
+    return 1
+
+
+def wait_answers(args, kit: Path) -> int:
+    state = wait_file(kit)
+    info = read_json(state)
+    if not info:
+        print(json.dumps({"status": "NO_FORM", "message": "No form is open for this kit."}))
+        return 1
+    out = kit / info["out"]
+    deadline = time.time() + args.timeout
+    while not info.get("finished") and time.time() < deadline:
+        time.sleep(1)
+        info = read_json(state, info) or info
+    if not info.get("finished"):
+        print(json.dumps({"status": "WAITING", "url": info.get("url"),
+                          "message": "The form is still open. Run --wait again."}))
+        return 4
+    state.unlink()
+    if not info.get("submitted"):
+        print(json.dumps({"status": "TIMEOUT", "message": "The form closed without an answer. Nothing was saved."}))
+        return 4
+    print(json.dumps({"status": "SUBMITTED", "out": info["out"], "removed_unused_files": info.get("removed_unused_files", 0),
+                      "record": read_json(out)}, ensure_ascii=False))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("form", nargs="?", help="setup, wireframe, full, mockup or export")
+    parser.add_argument("kit", help="Kit folder, such as ui_art/<kit>")
+    parser.add_argument("--out", help="Answer file, relative to the kit, under briefs/")
+    parser.add_argument("--timeout", type=int, default=3600, help="Seconds to wait for an answer")
+    parser.add_argument("--no-browser", action="store_true", help="Only print the URL")
+    parser.add_argument("--detach", action="store_true", help="Start the form in the background and return")
+    parser.add_argument("--wait", action="store_true", help="Wait for the form started with --detach")
+    parser.add_argument("--clean", action="store_true", help="Only delete unused files in inputs/")
+    parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args()
+    kit = Path(args.kit)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if args.clean:
+        print(json.dumps({"removed_unused_files": clean_inputs(kit)}))
+        return 0
+    if args.wait:
+        return wait_answers(args, kit)
+    if not args.form or not args.out:
+        parser.error("form and --out are required")
+    if not args.out.replace("\\", "/").startswith("briefs/"):
+        parser.error("--out must be under briefs/")
+    kit.mkdir(parents=True, exist_ok=True)
+    if args.detach:
+        return start_detached(args, kit)
+    return serve(args, kit)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

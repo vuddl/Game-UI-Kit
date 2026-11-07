@@ -1,0 +1,5 @@
+interface:
+  display_name: "Mockup"
+  short_description: "Make visual mockups, then export PSD, PNG and Unity JSON"
+policy:
+  allow_implicit_invocation: false

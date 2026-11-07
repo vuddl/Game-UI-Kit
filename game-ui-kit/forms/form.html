@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game UI Kit form</title>
+<style>
+:root{
+  --bg:#f1f0f6;--card:#ffffff;--text:#1d1c22;--muted:#6b6878;--line:#dcdae4;--accent:#5b4bd6;--accent-soft:#ece9fd;
+  --danger:#c62f3a;--ok:#1d8a4e;--field:#fafafc;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#15141a;--card:#1f1e26;--text:#ecebf2;--muted:#9e9bab;--line:#34323e;--accent:#9b8cff;--accent-soft:#2b2840;
+    --danger:#ff6b75;--ok:#4cc985;--field:#18171e}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 80px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:14px}
+.head{border-top:8px solid var(--accent)}
+h1{margin:0 0 6px;font-size:26px}
+.intro,.hint{color:var(--muted);margin:0}
+.hint{font-size:13px;margin-top:2px}
+.q.invalid{border-color:var(--danger)}
+.qt{font-weight:600;font-size:16px}
+.req{color:var(--danger);margin-left:3px}
+.err{color:var(--danger);font-size:13px;margin-top:8px;display:none}
+.q.invalid .err{display:block}
+.opts{margin-top:12px;display:flex;flex-direction:column;gap:2px}
+.group{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:10px 0 2px}
+.opt{border-radius:8px;padding:6px 8px}
+.opt:hover{background:var(--accent-soft)}
+.opt>label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.opt input[type=radio],.opt input[type=checkbox]{margin-top:4px;accent-color:var(--accent);width:17px;height:17px;flex:none}
+.opt .oh{color:var(--muted);font-size:13px}
+.opt img.thumb{display:block;max-width:220px;max-height:140px;border-radius:6px;border:1px solid var(--line);margin-top:6px}
+.extra{margin:8px 0 6px 27px;display:flex;flex-direction:column;gap:8px}
+input[type=text],input[type=number],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);font:inherit}
+textarea{min-height:64px;resize:vertical}
+input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.flabel{font-size:13px;color:var(--muted);margin-bottom:3px}
+.fields{display:grid;gap:10px;margin-top:12px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.files{display:flex;flex-direction:column;gap:8px}
+.file{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px}
+.file img,.file .ph{width:56px;height:56px;object-fit:contain;border-radius:6px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
+.file .nm{font-size:13px;word-break:break-all}
+.file input{margin-top:4px;padding:6px 9px;font-size:13px}
+button{font:inherit;cursor:pointer;border-radius:8px}
+.x{border:0;background:transparent;color:var(--muted);font-size:18px;padding:4px 8px}
+.x:hover{color:var(--danger)}
+.add{border:1px solid var(--line);background:transparent;color:var(--accent);padding:6px 12px;align-self:flex-start}
+.custom{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.custom .top{display:flex;gap:8px;align-items:center}
+.bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.send{background:var(--accent);color:#fff;border:0;padding:10px 26px;font-weight:600}
+.send:disabled{opacity:.6;cursor:default}
+.status{color:var(--muted);font-size:14px}
+.done{text-align:center;padding:48px 20px}
+.done h2{margin:0 0 6px;color:var(--ok)}
+.hidden{display:none!important}
+@media (max-width:520px){.row2{grid-template-columns:1fr}.opt img.thumb{max-width:100%}}
+</style>
+</head>
+<body>
+<main id="app"><div class="card status">Đang tải…</div></main>
+<script>
+"use strict";
+const IMG = /\.(png|jpe?g|webp|gif)$/i;
+let SPEC, CTX, VALUES = {}, UPLOADS = 0;
+const app = document.getElementById("app");
+
+function el(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})){
+    if (v === undefined || v === null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (k === "text") e.textContent = v;
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) e.append(kid);
+  return e;
+}
+const fileUrl = p => "/kitfile?p=" + encodeURIComponent(p);
+
+function textInput(value, onChange, opts = {}){
+  const tag = opts.multiline ? "textarea" : "input";
+  const input = el(tag, {type: opts.multiline ? undefined : (opts.number ? "number" : "text"),
+    placeholder: opts.placeholder || "", min: opts.min, max: opts.max});
+  input.value = value ?? "";
+  input.addEventListener("input", () => onChange(opts.number ? (input.value === "" ? null : Number(input.value)) : input.value));
+  return input;
+}
+
+/* Files: a list of {path, name, note}. accept and the question id decide where uploads go. */
+function filesWidget(list, where, hint){
+  const box = el("div", {class: "files"});
+  const listBox = el("div", {class: "files"});
+  const picker = el("input", {type: "file", multiple: true, class: "hidden",
+    accept: ".png,.jpg,.jpeg,.webp,.psd,.zip"});
+  const drop = el("div", {class: "drop", tabindex: "0", role: "button"}, hint || "Kéo thả file vào đây hoặc bấm để chọn");
+  function draw(){
+    listBox.replaceChildren(...list.map((f, i) => el("div", {class: "file"},
+      IMG.test(f.path) ? el("img", {src: fileUrl(f.path), alt: ""}) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
+      el("div", {}, el("div", {class: "nm", text: f.name || f.path.split("/").pop()}),
+        (() => { const n = textInput(f.note, v => { f.note = v; }, {placeholder: "Mô tả file này (không bắt buộc)"}); return n; })()),
+      el("button", {class: "x", type: "button", title: "Bỏ file", "aria-label": "Bỏ file",
+        onclick: () => { list.splice(i, 1); draw(); refresh(); }}, "×"))));
+  }
+  async function send(files){
+    for (const file of files){
+      UPLOADS++; status("Đang tải " + file.name + "…");
+      try {
+        const r = await fetch(`/upload?where=${encodeURIComponent(where)}&name=${encodeURIComponent(file.name)}`,
+          {method: "POST", body: file});
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || r.statusText);
+        for (const f of data.files) if (!list.some(x => x.path === f.path)) list.push({path: f.path, name: f.name, note: ""});
+      } catch (e){ alert("Không tải được " + file.name + ": " + e.message); }
+      UPLOADS--; status("");
+    }
+    draw(); refresh();
+  }
+  picker.addEventListener("change", () => { send([...picker.files]); picker.value = ""; });
+  drop.addEventListener("click", () => picker.click());
+  drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); picker.click(); } });
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]); });
+  draw();
+  box.append(listBox, drop, picker);
+  return box;
+}
+
+function fieldsWidget(defs, store){
+  return el("div", {class: defs.length === 2 && defs.every(d => d.type === "number") ? "row2" : "fields"},
+    defs.map(d => el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
+      textInput(store[d.id], v => { store[d.id] = v; }, {multiline: d.multiline, number: d.type === "number", placeholder: d.placeholder}))));
+}
+
+/* Extras under a chosen option: fields, a description and files. */
+function optionExtras(q, opt, entry){
+  const x = Object.assign({}, q.option_extras || {}, opt);
+  const box = el("div", {class: "extra"});
+  if (x.fields){ entry.fields = entry.fields || {}; box.append(fieldsWidget(x.fields, entry.fields)); }
+  if (x.describe) box.append(textInput(entry.note, v => { entry.note = v; }, {multiline: true, placeholder: x.describe_placeholder || "Mô tả"}));
+  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn")); }
+  return box.childElementCount ? box : null;
+}
+const slug = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "other";
+
+function visible(cond){
+  if (!cond) return true;
+  if (cond.context) return (cond.in || []).includes(CTX[cond.context]);
+  const q = SPEC.questions.find(x => x.id === cond.question);
+  if (!q || !isShown(q)) return false;
+  const v = (VALUES[q.id] || {}).value;
+  if (v === undefined || v === null) return false;
+  const picked = Array.isArray(v) ? v.map(e => e.choice) : (typeof v === "object" ? [v.choice] : [v]);
+  return picked.some(p => (cond.in || []).includes(p));
+}
+const isShown = q => visible(q.show_if);
+
+function renderQuestion(q){
+  const card = el("section", {class: "card q", id: "q_" + q.id});
+  const state = VALUES[q.id] = VALUES[q.id] || {};
+  card.append(el("div", {class: "qt"}, q.title, q.required ? el("span", {class: "req", text: "*"}) : null));
+  if (q.hint) card.append(el("p", {class: "hint", text: q.hint}));
+  const body = el("div", {});
+  card.append(body);
+
+  if (q.type === "single" || q.type === "multi"){
+    const multi = q.type === "multi";
+    if (multi && !Array.isArray(state.value)) state.value = [];
+    const opts = el("div", {class: "opts"});
+    let group = null;
+    const find = v => multi ? state.value.find(e => e.choice === v) : (state.value && state.value.choice === v ? state.value : null);
+    for (const opt of q.options){
+      if (opt.show_if && !visible(opt.show_if)){
+        if (find(opt.value)){ if (multi) state.value = state.value.filter(e => e.choice !== opt.value); else state.value = null; }
+        continue;
+      }
+      if (opt.group && opt.group !== group){ group = opt.group; opts.append(el("div", {class: "group", text: group})); }
+      const chosen = find(opt.value);
+      const input = el("input", {type: multi ? "checkbox" : "radio", name: q.id, checked: !!chosen});
+      input.addEventListener("change", () => {
+        if (multi){
+          if (input.checked) state.value.push({choice: opt.value, label: opt.label});
+          else state.value = state.value.filter(e => e.choice !== opt.value);
+        } else state.value = {choice: opt.value, label: opt.label};
+        rerender();
+      });
+      const row = el("div", {class: "opt"}, el("label", {}, input, el("div", {},
+        el("div", {text: opt.label}), opt.hint ? el("div", {class: "oh", text: opt.hint}) : null,
+        opt.image ? el("img", {class: "thumb", src: fileUrl(opt.image), alt: opt.label}) : null)));
+      if (chosen){ const extra = optionExtras(q, opt, chosen); if (extra) row.append(extra); }
+      opts.append(row);
+    }
+    if (q.other){
+      const o = q.other;
+      if (multi){
+        const customs = state.value.filter(e => e.choice === "other");
+        opts.append(el("div", {class: "group", text: o.label}));
+        customs.forEach(entry => {
+          const box = el("div", {class: "custom"}, el("div", {class: "top"},
+            textInput(entry.label, v => { entry.label = v; }, {placeholder: o.placeholder}),
+            el("button", {class: "x", type: "button", title: "Bỏ", "aria-label": "Bỏ", onclick: () => {
+              state.value = state.value.filter(e => e !== entry); rerender(); }}, "×")));
+          const extra = optionExtras(q, {value: "other"}, entry);
+          if (extra){ extra.style.marginLeft = "0"; box.append(extra); }
+          opts.append(box);
+        });
+        opts.append(el("button", {class: "add", type: "button", onclick: () => {
+          state.value.push({choice: "other", label: ""}); rerender(); }}, "+ Thêm " + o.label.toLowerCase()));
+      } else {
+        const chosen = state.value && state.value.choice === "other" ? state.value : null;
+        const input = el("input", {type: "radio", name: q.id, checked: !!chosen});
+        input.addEventListener("change", () => { state.value = {choice: "other", label: ""}; rerender(); });
+        const row = el("div", {class: "opt"}, el("label", {}, input, el("div", {text: o.label})));
+        if (chosen){
+          const extra = el("div", {class: "extra"}, textInput(chosen.label, v => { chosen.label = v; }, {placeholder: o.placeholder}));
+          const more = optionExtras(q, {value: "other"}, chosen);
+          if (more) extra.append(...more.childNodes);
+          row.append(extra);
+        }
+        opts.append(row);
+      }
+    }
+    body.append(opts);
+  } else if (q.type === "text"){
+    if (state.value === undefined) state.value = "";
+    body.append(el("div", {class: "fields"}, textInput(state.value, v => { state.value = v; }, {multiline: q.multiline, placeholder: q.placeholder || "Câu trả lời"})));
+  } else if (q.type === "number"){
+    if (state.value === undefined || state.value === null) state.value = q.default ?? null;
+    body.append(el("div", {class: "fields"}, textInput(state.value, v => { state.value = v; }, {number: true, min: q.min, max: q.max})));
+  } else if (q.type === "fields"){
+    state.value = state.value || {};
+    const defs = q.fields_by ? (q.fields_by[CTX[q.fields_by.context]] || []) : q.fields;
+    body.append(fieldsWidget(defs, state.value));
+  } else if (q.type === "files"){
+    if (!Array.isArray(state.value)) state.value = [];
+    body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint)));
+  }
+  if (q.describe){
+    body.append(el("div", {class: "fields"}, el("div", {class: "flabel", text: q.describe_label || "Mô tả thêm"}),
+      textInput(state.note, v => { state.note = v; }, {multiline: true})));
+  }
+  if (q.attach){
+    state.files = state.files || [];
+    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn")));
+  }
+  card.append(el("div", {class: "err", text: "Câu này cần trả lời."}));
+  return card;
+}
+
+let sendBtn, statusBox;
+function status(text){ if (statusBox) statusBox.textContent = text; }
+function refresh(){ if (sendBtn) sendBtn.disabled = UPLOADS > 0; }
+
+function rerender(){
+  const y = window.scrollY;
+  const box = document.getElementById("questions");
+  box.replaceChildren(...SPEC.questions.filter(isShown).map(renderQuestion));
+  window.scrollTo(0, y);
+}
+
+function problem(q){
+  const s = VALUES[q.id] || {};
+  const v = s.value;
+  const blank = x => x === undefined || x === null || (typeof x === "string" && !x.trim());
+  if (q.type === "single" || q.type === "multi"){
+    const entries = q.type === "multi" ? (v || []) : (v ? [v] : []);
+    if (q.required && !entries.length) return true;
+    for (const e of entries){
+      if (e.choice === "other" && blank(e.label)) return true;
+      const opt = (q.options || []).find(o => o.value === e.choice) || {};
+      if (opt.attach_required && !(e.files || []).length) return true;
+      for (const f of (opt.fields || [])) if (f.required && blank((e.fields || {})[f.id])) return true;
+    }
+    return false;
+  }
+  if (q.type === "files") return q.required && !(v || []).length;
+  if (q.type === "number") return (q.required && blank(v)) || (!blank(v) && ((q.min !== undefined && v < q.min) || (q.max !== undefined && v > q.max)));
+  if (q.type === "fields") return false;
+  return q.required && blank(v);
+}
+
+async function submit(){
+  const shown = SPEC.questions.filter(isShown);
+  let first = null;
+  for (const q of shown){
+    const bad = problem(q);
+    document.getElementById("q_" + q.id).classList.toggle("invalid", bad);
+    if (bad && !first) first = q;
+  }
+  if (first){ document.getElementById("q_" + first.id).scrollIntoView({behavior: "smooth", block: "center"}); status("Còn câu chưa trả lời."); return; }
+  const answers = {};
+  for (const q of shown){
+    const s = VALUES[q.id] || {};
+    const a = {value: s.value};
+    if (q.type === "multi") a.value = (s.value || []).filter(e => e.choice !== "other" || (e.label || "").trim());
+    if (q.describe && s.note) a.note = s.note;
+    if (q.attach && (s.files || []).length) a.files = s.files;
+    answers[q.id] = a;
+  }
+  sendBtn.disabled = true; status("Đang gửi…");
+  try {
+    const r = await fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({answers})});
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || r.statusText);
+    app.replaceChildren(el("div", {class: "card done"}, el("h2", {text: "Đã gửi"}),
+      el("p", {class: "intro", text: "Quay lại Codex để làm tiếp. Có thể đóng tab này."})));
+  } catch (e){ sendBtn.disabled = false; status("Không gửi được: " + e.message); }
+}
+
+(async function start(){
+  try {
+    const r = await fetch("/spec");
+    const data = await r.json();
+    SPEC = data.form; CTX = data.context || {};
+    for (const [k, v] of Object.entries(data.prefill || {})) VALUES[k] = JSON.parse(JSON.stringify(v));
+  } catch (e){ app.replaceChildren(el("div", {class: "card", text: "Không tải được form: " + e.message})); return; }
+  document.title = SPEC.title;
+  sendBtn = el("button", {class: "send", type: "button", onclick: submit}, "Hoàn thành");
+  statusBox = el("span", {class: "status"});
+  app.replaceChildren(
+    el("div", {class: "card head"}, el("h1", {text: SPEC.title}), SPEC.intro ? el("p", {class: "intro", text: SPEC.intro}) : null,
+      CTX.summary ? el("p", {class: "hint", text: CTX.summary}) : null),
+    el("div", {id: "questions"}),
+    el("div", {class: "bar"}, sendBtn, statusBox));
+  rerender();
+})();
+</script>
+</body>
+</html>

@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI confirm"
-  short_description: "Confirm a game UI wireframe or a screen's mockup"
-policy:
-  allow_implicit_invocation: false

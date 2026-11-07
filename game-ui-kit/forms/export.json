@@ -1,0 +1,24 @@
+{
+  "id": "export",
+  "title": "Export file thiết kế",
+  "intro": "Kết quả luôn kèm file JSON hướng dẫn ghép trong Unity.",
+  "questions": [
+    {
+      "id": "format",
+      "type": "multi",
+      "title": "Export file Photoshop hay ảnh PNG?",
+      "required": true,
+      "options": [
+        {"value": "psd", "label": "File Photoshop (PSD)"},
+        {"value": "png", "label": "Ảnh PNG"}
+      ]
+    },
+    {
+      "id": "layouts",
+      "type": "multi",
+      "title": "Chọn option để export",
+      "required": true,
+      "options_from": "kit:mockups"
+    }
+  ]
+}

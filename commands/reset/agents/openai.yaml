@@ -1,0 +1,5 @@
+interface:
+  display_name: "Reset"
+  short_description: "Throw away the current command's work and start it again"
+policy:
+  allow_implicit_invocation: false

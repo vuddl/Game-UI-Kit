@@ -1650,11 +1650,13 @@ def cmd_export(args) -> int:
         built[screen] = (layout, layers, warnings)
 
     psd_dir, png_dir = kit / "export" / "psd", kit / "export" / "png"
-    targets = [psd_dir / f"{s}.psd" for s in built] + [png_dir / f"{s}.png" for s in built]
+    png_only = getattr(args, "png_only", False)
+    targets = ([] if png_only else [psd_dir / f"{s}.psd" for s in built]) + [png_dir / f"{s}.png" for s in built]
     existing = [t.name for t in targets if t.exists()]
     if existing and not args.force:
         die("EXISTS", f"{existing} already exist. Pass --force only if replacing them was requested.", 1)
-    psd_dir.mkdir(parents=True, exist_ok=True)
+    if not png_only:
+        psd_dir.mkdir(parents=True, exist_ok=True)
     png_dir.mkdir(parents=True, exist_ok=True)
 
     report = {}
@@ -1662,6 +1664,10 @@ def cmd_export(args) -> int:
         size = tuple(layout["size"])
         merged = flatten(layers, size)
         merged.save(png_dir / f"{screen}.png")
+        if png_only:
+            report[screen] = {"png": f"export/png/{screen}.png", "layout": picked[screen].stem, "warnings": warnings}
+            print(f"{screen}: export/png/{screen}.png from {picked[screen].stem}")
+            continue
         full = list(layers)
         reference = kit / layout["reference"] if layout.get("reference") else None
         if reference and reference.exists():
@@ -1675,7 +1681,7 @@ def cmd_export(args) -> int:
         print(f"{screen}: export/psd/{screen}.psd from {picked[screen].stem}, {count} layers, "
               f"{texts} text layers as pixels, {len(warnings)} warnings")
     (kit / "export" / "export_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"Exported {len(report)} screens. Text layers are pixels, not editable type.")
+    print(f"Exported {len(report)} screens." + ("" if png_only else " Text layers are pixels, not editable type."))
     return 0
 
 
@@ -1706,32 +1712,21 @@ def cmd_info(args) -> int:
     good, stale = confirmed_screens(kit)
     wire_ok, wire_changed = wireframe_confirmed(kit) if screens else (False, [])
     exports = sorted(p.stem for p in (kit / "export" / "psd").glob("*.psd"))
-    brief = read("brief.json")
+    brief = read("briefs/setup.json")
     has_demo = (kit / "demo" / "index.html").exists()
-    demo_due = bool(brief and brief.get("prototype") and screens and wire_ok and not has_demo)
-
-    if not brief and not screens:
-        step = "Run wireframe create, which first asks the wireframe questions."
-    elif not elements and not screens:
-        step = "Load a kit, or start with wireframe create."
-    elif demo_due:
-        step = "The wireframe is approved and the brief asked for a prototype: run flow --wireframe."
-    elif not elements:
-        step = "Confirm the wireframe, then create art with asset."
+    exported = sorted(p.stem for p in (kit / "export").rglob("*") if p.suffix in (".psd", ".png", ".json")
+                      and p.parent.name in ("psd", "png", "unity"))
+    mocked = [p.stem for p in (kit / "preview" / "mockups").glob("*.png")] if (kit / "preview" / "mockups").exists() else []
+    if not brief:
+        step = "Run $setup."
     elif not screens:
-        step = "Propose layouts with wireframe create."
-    elif not wire_ok:
-        step = "Review the wireframes, adjust them, then confirm wireframe."
-    elif undecided:
-        step = f"Choose a variant for {undecided} with confirm <screen> v<n>."
-    elif qa is None or qa["errors"]:
-        step = "Run check and fix any errors."
-    elif len(good) < len(screens):
-        step = f"Confirm the remaining screens: {sorted(set(screens) - set(good))}."
-    elif len(exports) < len(screens):
-        step = "Run export."
+        step = "Run $wireframe, or $mockup with your own wireframe files."
+    elif not mocked:
+        step = "Run $mockup."
+    elif not exported:
+        step = "Run $mockup and answer Có to Export."
     else:
-        step = "Everything is exported."
+        step = "Exported. Run $mockup again to change or add screens."
     info = {
         "kit": kit.resolve().name,
         "elements": {"total": len(elements), "families": dict(sorted(families.items())),
@@ -1748,8 +1743,7 @@ def cmd_info(args) -> int:
         "fonts": [p.name for p in kit_fonts(kit)] or "none, system font in use",
         "wireframe_confirmed": wire_ok, "wireframe_changed": wire_changed,
         "confirmed_screens": sorted(good), "changed_since_confirmed": sorted(stale),
-        "brief": {"game_type": brief.get("game_type"), "size": brief.get("size"), "prototype": brief.get("prototype")}
-                 if brief else "not answered",
+        "setup": {"game_type": brief.get("game_type"), "size": brief.get("size")} if brief else "not done",
         "flow_demo": has_demo,
         "exported_psd": exports,
         "next_step": step,
@@ -2392,7 +2386,15 @@ def cmd_confirm(args) -> int:
 
 
 def export_targets(kit: Path, args) -> dict[str, Path]:
-    """Pick screens to export: confirmed ones only, unless --unconfirmed is given."""
+    """Pick screens to export: confirmed ones only, unless --unconfirmed is given.
+
+    With --layout, export exactly those layouts, such as home__v2, each under its own name."""
+    if getattr(args, "layout", None):
+        available = {p.stem: p for p in layout_paths(kit)}
+        missing = [name for name in args.layout if name not in available]
+        if missing:
+            die("NOT_FOUND", f"no layouts {missing}. Layouts: {sorted(available)}", 1)
+        return {name: available[name] for name in args.layout}
     picked = selected_layouts(kit, args.screen)
     if args.unconfirmed:
         return picked
@@ -2884,6 +2886,7 @@ def main() -> int:
     p.add_argument("--redraw-kit", action="store_true",
                    help="Also redraw the user's kit sprites as shapes; by default they stay images under their own file names")
     p.add_argument("--unconfirmed", action="store_true", help="Also export screens not yet confirmed")
+    p.add_argument("--layout", action="append", help="Export exactly this layout, such as home__v2; repeatable")
     p.add_argument("--no-run", action="store_true", help="Only write the Photoshop script")
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--max-layers", type=int, default=24)
@@ -2896,6 +2899,7 @@ def main() -> int:
     p.add_argument("kit")
     p.add_argument("--screen")
     p.add_argument("--unconfirmed", action="store_true")
+    p.add_argument("--layout", action="append", help="Export exactly this layout, such as home__v2; repeatable")
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_unity)
 
@@ -2925,6 +2929,8 @@ def main() -> int:
     p.add_argument("kit")
     p.add_argument("--screen", help="One screen; defaults to all")
     p.add_argument("--unconfirmed", action="store_true", help="Also export screens not yet confirmed")
+    p.add_argument("--layout", action="append", help="Export exactly this layout, such as home__v2; repeatable")
+    p.add_argument("--png-only", action="store_true", help="Write only export/png/, no flat PSD")
     p.add_argument("--force", action="store_true", help="Replace existing exports")
     p.set_defaults(func=cmd_export)
 

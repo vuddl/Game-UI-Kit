@@ -1,12 +1,12 @@
 # Game UI Kit
 
-Skill cho Codex để tạo bộ artwork UI game: nút kèm trạng thái, panel, thanh, khung và icon, xuất thành PNG trong suốt có tên rõ ràng và dữ liệu 9-slice. Skill cũng cắt, sắp xếp và tạo thêm từ UI kit có sẵn, đối chiếu kết quả với ảnh tham chiếu, và ghép mockup xem trước từ chính các sprite. Skill không dựng màn hình trong game engine.
+Skill cho Codex để làm wireframe, UI visual mockup và xuất file thiết kế cho game. Mọi câu hỏi lớn đều hỏi bằng form trong trình duyệt. Skill tạo bộ artwork UI (nút kèm trạng thái, panel, thanh, khung, icon) thành PNG trong suốt có tên rõ ràng và dữ liệu 9-slice, ghép mockup từ chính các sprite, rồi xuất PSD, PNG và JSON hướng dẫn ghép trong Unity. Skill không dựng màn hình trong game engine.
 
 Skill tạo ảnh bằng `image_gen` có sẵn trong Codex, chạy trên tài khoản Codex đang đăng nhập, không cần API key.
 
 ## Cài đặt
 
-Trong PowerShell, lệnh này cài hoặc cập nhật skill chính và toàn bộ lệnh `$gui-...`:
+Trong PowerShell, lệnh này cài hoặc cập nhật skill chính và 4 lệnh `$setup`, `$wireframe`, `$mockup`, `$reset`. Lệnh cũng xoá các lệnh `$gui-...` cũ:
 
 ```powershell
 py -3 -c "import urllib.request as u;exec(u.urlopen('https://raw.githubusercontent.com/vuddl/Game-UI-Kit/main/game-ui-kit/scripts/update.py').read())"
@@ -18,76 +18,52 @@ Script cần Python 3 kèm Pillow và numpy:
 py -3 -m pip install pillow numpy
 ```
 
-Sau đó mở một phiên Codex mới và gõ `$gui-info`. Xuất PSD sửa được cần cài Photoshop trên máy.
-
-## Cách dùng
-
-Tạo bộ mới:
-
-```text
-$game-ui-kit Tạo bộ UI cho game [mô tả game], mobile dọc, gồm main menu, popup, shop, HUD.
-```
-
-Sắp xếp kit có sẵn, không tạo ảnh mới:
-
-```text
-$game-ui-kit Tôi có kit ở D:\duong_dan\kit. Chỉ sắp xếp và đặt tên, không tạo ảnh mới.
-```
-
-Tạo thêm phần còn thiếu:
-
-```text
-$game-ui-kit Tôi có kit ở D:\duong_dan\kit. Tạo thêm phần còn thiếu cho màn hình shop và đối chiếu với kit.
-```
-
-### Hai vai trò
-
-**Có UI kit:** dùng tối đa element trong kit. Chỉ tạo element mới khi không có cái nào hợp, vẽ theo đúng style kit, đặt vào đúng nhóm và đặt tên theo quy tắc. Sprite của kit giữ tên file gốc làm tên layer trong PSD, dùng nhiều lần vẫn cùng một tên, nên khi xuất layer không bị lặp resource.
-
-**Không có UI kit:** skill hỏi bạn mô tả art style, rồi hỏi bạn muốn bắt đầu từ prompt hay từ ảnh tham khảo (ít nhất 1 ảnh, kèm ghi chú là tham khảo layout hay art style). Sau khi bạn chốt màn demo, skill lấy nó làm mốc style, dựng một bộ component nền (font, nút, popup, panel, thanh, tab, khung, icon) và dùng lặp lại, chỉ thêm element mới khi thật cần.
-
-**Mỗi màn có phần riêng:** sau khi chốt màn mốc, skill vẽ thêm 1 concept cho mỗi loại màn khác (shop, settings...) theo cùng style. Element chia hai lớp: lớp base dùng chung và lớp riêng từng màn, ví dụ shop có tab, khung item, tag giá, settings có icon từng dòng và toggle. Lệnh `mockup` và `qa` cảnh báo `PLAIN_SCREEN` khi một màn chỉ có panel, nút và chữ.
-
-**Nền và art, cả hai vai trò:** màn nào cũng có nền. Màn thường dùng nền và pattern của kit trước. HUD có ảnh cảnh vẽ theo art style của game. Popup dùng màn cha làm mờ (`backdrop`). Nhân vật và vật phẩm không có trong kit thì skill tự tạo, hiển thị bằng hình thay vì chữ.
-
-### Bảng hỏi khi tạo wireframe
-
-`$gui-wireframe create` luôn bắt đầu bằng 7 câu hỏi đánh số: hướng màn hoặc kích thước tự nhập, các màn cần làm, thể loại game, gameplay, chức năng từng màn, nội dung từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), và có tạo prototype không. Trả lời trên một dòng, ví dụ:
-
-```text
-1b | 2: 1, 6, Other: Gacha | 3: 13 | 4: ... | 5: ... | 6: ... | 7b
-```
-
-Câu thể loại và gameplay chỉ hỏi ở wireframe đầu tiên của một game mới. Câu trả lời lưu trong `brief.json`. Bước đầu chỉ vẽ ảnh wireframe. Sau khi bạn chỉnh và chốt bằng `$gui-confirm wireframe`, prototype mới được tạo, và chỉ khi câu 7 chọn có.
-
-Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
+Sau đó mở một phiên Codex mới và gõ `$setup`. Xuất PSD sửa được cần cài Photoshop trên máy. Bảng chọn bấm được giữa các bước cần app Codex Desktop; nơi khác thì Codex hỏi bằng lựa chọn đánh số.
 
 ## Lệnh
 
-Gõ `$gui` trong Codex để thấy danh sách.
-
 | Lệnh | Tác dụng |
 |---|---|
-| `$gui-info` | Xem các lệnh, tình trạng kit và bước tiếp theo |
-| `$gui-kit <đường dẫn>` | Nạp UI kit có sẵn |
-| `$gui-wireframe create <mô tả>` | Hỏi bảng câu hỏi, rồi vẽ ảnh wireframe. Chưa tạo prototype |
-| `$gui-wireframe adjust <mô tả>` | Sửa wireframe bằng lời |
-| `$gui-tone [auto\|game\|ref]` | Xem hoặc đổi nguồn tông màu |
-| `$gui-asset <mô tả>` | Tạo sprite còn thiếu, có tốn hạn mức ảnh |
-| `$gui-replace <sprite> <mô tả>` | Tạo lại một sprite, có tốn hạn mức ảnh |
-| `$gui-mockup <màn> [x]` | Ghép mockup một màn, `x` mẫu |
-| `$gui-mockup all [x]` | Ghép mockup mọi màn |
-| `$gui-mockup adjust <mô tả>` | Sửa mockup bằng lời |
-| `$gui-review <màn>` | AI nhận xét màn hình |
-| `$gui-device <màn>` | Thử trên nhiều tỷ lệ màn hình |
-| `$gui-check` | Kiểm tra lỗi và độ khớp tông màu |
-| `$gui-confirm wireframe` | Chốt wireframe, tạo prototype nếu bảng hỏi chọn có |
-| `$gui-confirm <màn> [v2]` | Chốt mockup một màn |
-| `$gui-flow` | Tạo demo bấm thử và sơ đồ luồng |
-| `$gui-spec` | Tạo tài liệu bàn giao |
-| `$gui-export` | Xuất PSD sửa được cho các màn đã chốt |
-| `$gui-export unity` | Xuất JSON mapping cho Unity |
+| `$setup` | Form định hình game: màn dọc, ngang hay tự nhập kích thước; thể loại game; gameplay. Chưa setup thì các lệnh khác không chạy |
+| `$wireframe` | Làm wireframe từng màn bằng form, hoặc làm full các màn còn lại cùng lúc. Kết quả là ảnh PNG |
+| `$mockup` | Làm UI visual mockup từng màn bằng form, hoặc làm full. Sau đó hỏi export PSD, PNG, kèm JSON ghép Unity |
+| `$reset` | Xoá hết những gì lệnh đang làm đã tạo, rồi làm lại lệnh đó từ đầu. Reset khi đang ở `$setup` thì xoá luôn setup |
 
-Thứ tự: `kit` (nếu có), `wireframe create`, `wireframe adjust`, `confirm wireframe`, `asset`, `mockup`, `mockup adjust`, `confirm <màn>`, `flow`, `export`.
+Quy tắc chuyển lệnh:
 
-Kết quả nằm trong `ui_art/<tên_kit>/`: sprite ở `elements/`, mockup ở `preview/mockups/`, demo ở `demo/index.html`, file xuất ở `export/`. PSD có text thật, group theo quan hệ cha con, shape cho hình đủ đơn giản và smart object cho hình phức tạp. Mockup, PSD và JSON chưa phải màn hình dựng trong game engine.
+- Gõ lệnh khác khi đang làm dở: bỏ lệnh cũ, sang ngay lệnh mới. Phần đã làm vẫn giữ.
+- Gõ lại đúng lệnh đang làm: không có gì thay đổi, làm tiếp từ chỗ dở.
+- Quay lại một lệnh đã bỏ dở: làm tiếp từ chỗ dở của lệnh đó.
+
+## Luồng `$wireframe`
+
+1. Form tạo wireframe cho một màn: màn gì, chức năng, mô tả từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), có tạo prototype không, tạo mấy option.
+2. Codex hiện ảnh wireframe, rồi hỏi: **Sửa chữa tiếp** (sửa qua chat), **Làm full màn** hay **Tiếp tục**.
+3. Tiếp tục: Codex hỏi đã xong hết các màn chưa. Chưa thì quay lại form cho màn tiếp theo.
+4. Làm full màn: form chọn nhiều màn cùng lúc, mỗi màn có mô tả và ảnh ref riêng, thêm yêu cầu chung cho tất cả.
+5. Kết quả: ảnh wireframe PNG từng màn, và demo bấm thử nếu có màn chọn prototype.
+
+## Luồng `$mockup`
+
+1. Form tạo mockup cho một màn: màn nào, add wireframe (PNG, ZIP...), có UI kit không (có: add kit; không: add ảnh reference hoặc chọn màu, sáng hay dark theme, UI style), có background sẵn không, tạo mấy option.
+2. Codex hiện mockup, rồi hỏi: Sửa chữa tiếp, Làm full màn hay Tiếp tục, như `$wireframe`. Làm full màn dùng setup của màn đầu tiên.
+3. Kết quả: ảnh mockup demo. Codex hỏi **Export không?**. Không thì hỏi có sửa tiếp không.
+4. Form export: chọn PSD, PNG hoặc cả hai, và chọn các option muốn xuất (có ảnh xem trước). Kết quả luôn kèm JSON hướng dẫn ghép trong Unity.
+
+**Có UI kit:** dùng tối đa element trong kit, chỉ tạo element mới khi không có cái nào hợp, vẽ theo đúng style kit. Sprite của kit giữ tên file gốc làm tên layer trong PSD, nên khi xuất layer không bị lặp resource.
+
+**Không có UI kit:** skill làm màn demo từ reference hoặc từ mô tả, bạn chốt thì lấy làm mốc style. Sau đó skill dựng bộ component nền theo `ui_kit_standard.md` và thêm phần riêng cho từng màn, để màn nào cũng có chi tiết riêng.
+
+**Nền:** màn nào cũng có nền, lấy từ file bạn add, từ UI kit hoặc tạo mới theo art style. HUD có ảnh cảnh gameplay, popup dùng màn cha làm mờ.
+
+## Form
+
+Form mở trên trình duyệt qua localhost. Form có câu chọn một hoặc nhiều đáp án, ô mô tả và nút đính kèm file cho từng lựa chọn, mô tả riêng cho từng file. Câu hỏi hiện theo câu trả lời trước, câu bắt buộc chưa trả lời thì không gửi được, và câu trả lời cũ được điền sẵn khi mở lại. Bấm **Hoàn thành** thì Codex nhận câu trả lời và làm tiếp.
+
+File đính kèm lưu ở `inputs/` trong kit. File trùng nội dung chỉ lưu một lần, file ZIP được giải nén, file bạn bỏ đi thì bị xoá, nên không sinh rác mỗi lần hỏi.
+
+Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Câu hỏi của từng form nằm ở `game-ui-kit/forms/*.json`, sửa file đó để đổi câu hỏi. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
+
+## Kết quả
+
+Mọi thứ nằm trong `ui_art/<tên_game>/`: wireframe ở `preview/wireframes/`, mockup ở `preview/mockups/`, demo ở `demo/index.html`, file xuất ở `export/psd/`, `export/png/`, `export/unity/`. PSD có text thật, group theo quan hệ cha con, shape cho hình đủ đơn giản và smart object cho hình phức tạp. Mockup, PSD và JSON chưa phải màn hình dựng trong game engine.

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Wireframe"
+  short_description: "Make wireframe images screen by screen"
+policy:
+  allow_implicit_invocation: false

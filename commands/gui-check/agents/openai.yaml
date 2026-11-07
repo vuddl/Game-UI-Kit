@@ -1,5 +1,0 @@
-interface:
-  display_name: "GUI check"
-  short_description: "Check a game UI kit for errors and tone drift"
-policy:
-  allow_implicit_invocation: false

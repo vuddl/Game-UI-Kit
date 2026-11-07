@@ -1,0 +1,5 @@
+interface:
+  display_name: "Setup game"
+  short_description: "Answer the setup form: size, game type, gameplay"
+policy:
+  allow_implicit_invocation: false
