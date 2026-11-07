@@ -1,0 +1,5 @@
+interface:
+  display_name: "Info"
+  short_description: "Xem những gì đã lưu: setup, từng màn, kết quả, export"
+policy:
+  allow_implicit_invocation: false

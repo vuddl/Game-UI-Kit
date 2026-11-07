@@ -1,11 +1,13 @@
 ---
 name: game-ui-kit
-description: Generate game UI wireframes, visual mockups and design files through four commands, $setup, $wireframe, $mockup and $reset, asking the user through browser forms. Builds a consistent set of UI artwork (buttons with states, panels, popups, bars, frames, icons) as named transparent PNGs with 9-slice data, from a text brief, references or an existing UI kit, assembles mockups from the sprites, and exports layered PSD, PNG and a Unity assembly JSON. Use when the user types $setup, $wireframe, $mockup or $reset, or asks for a game UI kit, wireframe, mockup or PSD. Does not build screens, prefabs or scenes in a game engine.
+description: Generate game UI wireframes, visual mockups and design files through five commands, $setup, $wireframe, $mockup, $reset and $info, asking the user through browser forms. Builds a consistent set of UI artwork (buttons with states, panels, popups, bars, frames, icons) as named transparent PNGs with 9-slice data, from a text brief, references or an existing UI kit, assembles mockups from the sprites, and exports layered PSD, PNG and a Unity assembly JSON. Use when the user types $setup, $wireframe, $mockup, $reset or $info, or asks for a game UI kit, wireframe, mockup or PSD. Does not build screens, prefabs or scenes in a game engine.
 ---
 
 # Game UI Kit
 
-Produce finished UI artwork with the built-in `image_gen` tool from the `imagegen` skill. It runs on the user's signed-in Codex account. Never use the `image_gen.py` CLI, an `OPENAI_API_KEY` or any paid service; if the built-in tool is unavailable or the plan limit is reached, stop and tell the user. Scripts handle cutting, naming, 9-slice and checks, so never hand-crop sheets or edit `manifest.json` by hand. Reply to the user in their language.
+Produce finished UI artwork with the built-in `image_gen` tool from the `imagegen` skill. It runs on the user's signed-in Codex account. Never use the `image_gen.py` CLI, an `OPENAI_API_KEY` or any paid service; if the built-in tool is unavailable or the plan limit is reached, stop and tell the user. Scripts handle cutting, naming, 9-slice and checks, so never hand-crop sheets or edit `manifest.json` by hand.
+
+**Always reply to the user in Vietnamese,** including results, reports, choices and errors, whatever language the command or the scripts use. Keep commands, file paths, element names and in-game text as they are; in-game text follows the Text rule in Mockup.
 
 Run scripts with `py -3` on Windows and `python3` elsewhere. They need Pillow and numpy. `<skill>` below is this skill's folder.
 
@@ -30,7 +32,7 @@ Copy every kept image out of `$CODEX_HOME/generated_images/` into the kit. Never
 
 ## Commands
 
-The user drives everything with four commands:
+The user drives everything with five commands:
 
 | Command | What it does |
 |---|---|
@@ -38,6 +40,7 @@ The user drives everything with four commands:
 | `$wireframe` | Makes wireframe images, screen by screen or all at once. |
 | `$mockup` | Makes the UI visual mockups, then exports the design files. |
 | `$reset` | Throws away what the current command has made and starts it again. |
+| `$info` | Shows everything saved so far: the setup, each screen's answers, results, exports and where the current command stands. Changes nothing. |
 
 **Before anything else, run `state.py begin`** with the command's name, and act on what it prints:
 
@@ -55,6 +58,15 @@ py -3 <skill>/scripts/state.py ui_art/<kit> begin wireframe
 - **The latest command wins.** When the user types another command while one is unfinished, drop the old one at once, with no question and no wrap-up, and start the new one. The old one's work stays on disk.
 - **Record progress** after each step with `state.py ui_art/<kit> step "<what was just done>"`, and run `state.py ui_art/<kit> done` when the command finishes.
 - **`$reset`:** run `state.py ui_art/<kit> reset`. It deletes every file the current command created, its form answers and attachments included, and restores the text files it changed. Resetting `$setup` also deletes the setup, which blocks the other commands until `$setup` runs again. Report the counts it prints, then start the same command again from its first step.
+
+- **`$info`** only reports, so it never runs `state.py begin`, never changes the current command and never resets anything. Run `state.py ui_art/<kit> summary` and present it in Vietnamese, in this order, skipping empty parts:
+  1. **Setup:** kit name, size and orientation (dọc or ngang), game type, gameplay. Without a setup, say only to run `$setup`.
+  2. **Đang làm:** the current command and its step, or that none is running, plus commands left unfinished.
+  3. **Wireframe:** each screen with its function, filled areas, options count and prototype choice; screens from the full form; the image paths; the prototype path.
+  4. **Mockup:** each screen with its source (UI kit and file count, references and file count, or colors, theme and UI style), background choice and note, and options count; screens from the full form; the image paths.
+  5. **Export:** formats, layouts and file paths.
+  6. The number of attached files kept in `inputs/`.
+  End with one line on what to run next. After `$info`, carry on with the current command only when the user asks.
 
 **Which kit.** `$setup` for a new game creates `ui_art/<game_slug>/`, named after the project folder unless the user named the game, and writes that name to `ui_art/.active`. Every other command uses the kit named in `ui_art/.active`. If that file is missing and several kits have `briefs/setup.json`, ask which one as a choice, then write it.
 

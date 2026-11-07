@@ -6,6 +6,7 @@
     state.py <kit> done
     state.py <kit> reset
     state.py <kit> show
+    state.py <kit> summary      everything saved so far, for $info; changes nothing
 
 begin prints one of:
   NEEDS_SETUP   no setup yet; only $setup may run
@@ -200,10 +201,98 @@ def cmd_show(kit: Path) -> int:
     return 0
 
 
+def read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def value(answers: dict, key: str):
+    return (answers.get(key) or {}).get("value")
+
+
+def files_of(entry) -> list[str]:
+    return [f.get("path") for f in (entry or {}).get("files") or [] if isinstance(f, dict)]
+
+
+def list_images(kit: Path, folder: str) -> list[str]:
+    path = kit / folder
+    return sorted(p.relative_to(kit).as_posix() for p in path.glob("*.png")) if path.exists() else []
+
+
+def screen_briefs(kit: Path, command: str) -> list[dict]:
+    folder = kit / "briefs" / command
+    if not folder.exists():
+        return []
+    return [(p.stem, read_json(p) or {}) for p in sorted(folder.glob("*.json")) if p.stem not in ("_new", "full")]
+
+
+def cmd_summary(kit: Path) -> int:
+    data = load(kit)
+    setup = read_json(kit / "briefs" / "setup.json")
+    summary = {"kit": kit.resolve().name, "path": str(kit)}
+    if setup:
+        summary["setup"] = {"size": setup.get("size"), "orientation": setup.get("orientation"),
+                            "game_type": setup.get("game_type"), "gameplay": setup.get("gameplay"),
+                            "saved": setup.get("submitted")}
+    else:
+        summary["setup"] = None
+    current = data.get("current")
+    summary["current"] = {"command": current, "step": data["runs"][current]["step"]} if current else None
+    summary["commands"] = {name: {"status": run["status"], "step": run["step"]} for name, run in data["runs"].items()}
+
+    wireframes = []
+    for stem, record in screen_briefs(kit, "wireframe"):
+        answers = record.get("answers") or {}
+        wireframes.append({"screen": record.get("screen_label") or stem, "function": value(answers, "function"),
+                           "areas": {k: v for k, v in (value(answers, "areas") or {}).items() if v},
+                           "options": record.get("options"), "prototype": record.get("prototype")})
+    full = read_json(kit / "briefs" / "wireframe" / "full.json")
+    summary["wireframe"] = {
+        "screens": wireframes,
+        "full": [{"screen": e.get("label"), "note": e.get("note"), "files": len(e.get("files") or [])}
+                 for e in (full or {}).get("screens", [])],
+        "images": list_images(kit, "preview/wireframes"),
+        "prototype": "demo/index.html" if (kit / "demo" / "index.html").exists() else None,
+    }
+
+    mockups = []
+    for stem, record in screen_briefs(kit, "mockup"):
+        answers = record.get("answers") or {}
+        kit_answer, start, background = value(answers, "kit") or {}, value(answers, "start") or {}, value(answers, "background") or {}
+        if kit_answer.get("choice") == "yes":
+            source = {"type": "ui_kit", "files": len(files_of(kit_answer)), "note": kit_answer.get("note")}
+        elif start.get("choice") == "reference":
+            source = {"type": "reference", "files": len(files_of(start)), "note": start.get("note")}
+        else:
+            source = {"type": "description", "colors": value(answers, "colors"),
+                      "theme": (value(answers, "theme") or {}).get("label"),
+                      "ui_style": (value(answers, "ui_style") or {}).get("label"), "note": value(answers, "style_note")}
+        mockups.append({"screen": record.get("screen_label") or stem, "wireframe_files": len(value(answers, "wireframe") or []),
+                        "source": source, "background": background.get("label"),
+                        "background_note": (answers.get("background") or {}).get("note"), "options": record.get("options")})
+    full = read_json(kit / "briefs" / "mockup" / "full.json")
+    summary["mockup"] = {
+        "screens": mockups,
+        "full": [{"screen": e.get("label"), "note": e.get("note"), "files": len(e.get("files") or [])}
+                 for e in (full or {}).get("screens", [])],
+        "images": [p for p in list_images(kit, "preview/mockups") if "_variants" not in p and "_vs_reference" not in p],
+    }
+    export = read_json(kit / "briefs" / "export.json")
+    files = sorted(p.relative_to(kit).as_posix() for p in (kit / "export").rglob("*")
+                   if p.is_file() and p.parent.name in ("psd", "png", "unity")) if (kit / "export").exists() else []
+    summary["export"] = {"formats": (export or {}).get("formats"), "layouts": (export or {}).get("layouts"), "files": files}
+    inputs = kit / "inputs"
+    summary["attached_files"] = sum(1 for p in inputs.rglob("*") if p.is_file()) if inputs.exists() else 0
+    print(json.dumps(summary, indent=2, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("kit")
-    parser.add_argument("action", choices=["begin", "step", "done", "reset", "show"])
+    parser.add_argument("action", choices=["begin", "step", "done", "reset", "show", "summary"])
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
     kit = Path(args.kit)
@@ -224,6 +313,11 @@ def main() -> int:
         return cmd_done(kit)
     if args.action == "reset":
         return cmd_reset(kit)
+    if args.action == "summary":
+        if not kit.exists():
+            print(json.dumps({"kit": None, "setup": None, "message": "No kit yet. Run $setup."}))
+            return 0
+        return cmd_summary(kit)
     return cmd_show(kit)
 
 

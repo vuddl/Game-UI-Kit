@@ -6,7 +6,7 @@ Skill tạo ảnh bằng `image_gen` có sẵn trong Codex, chạy trên tài kh
 
 ## Cài đặt
 
-Trong PowerShell, lệnh này cài hoặc cập nhật skill chính và 4 lệnh `$setup`, `$wireframe`, `$mockup`, `$reset`. Lệnh cũng xoá các lệnh `$gui-...` cũ:
+Trong PowerShell, lệnh này cài hoặc cập nhật skill chính và 5 lệnh `$setup`, `$wireframe`, `$mockup`, `$reset`, `$info`. Lệnh cũng xoá các lệnh `$gui-...` cũ:
 
 ```powershell
 py -3 -c "import urllib.request as u;exec(u.urlopen('https://raw.githubusercontent.com/vuddl/Game-UI-Kit/main/game-ui-kit/scripts/update.py').read())"
@@ -28,8 +28,11 @@ Sau đó mở một phiên Codex mới và gõ `$setup`. Xuất PSD sửa đư�
 | `$wireframe` | Làm wireframe từng màn bằng form, hoặc làm full các màn còn lại cùng lúc. Kết quả là ảnh PNG |
 | `$mockup` | Làm UI visual mockup từng màn bằng form, hoặc làm full. Sau đó hỏi export PSD, PNG, kèm JSON ghép Unity |
 | `$reset` | Xoá hết những gì lệnh đang làm đã tạo, rồi làm lại lệnh đó từ đầu. Reset khi đang ở `$setup` thì xoá luôn setup |
+| `$info` | Thông báo những gì đã lưu: setup (kích thước, hướng màn, thể loại, gameplay), câu trả lời từng màn của wireframe và mockup, ảnh kết quả, file export, và lệnh đang làm tới bước nào. Không thay đổi gì |
 
-Quy tắc chuyển lệnh:
+Codex luôn trả lời bằng tiếng Việt.
+
+Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 
 - Gõ lệnh khác khi đang làm dở: bỏ lệnh cũ, sang ngay lệnh mới. Phần đã làm vẫn giữ.
 - Gõ lại đúng lệnh đang làm: không có gì thay đổi, làm tiếp từ chỗ dở.
