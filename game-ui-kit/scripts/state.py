@@ -234,7 +234,8 @@ def cmd_summary(kit: Path) -> int:
     summary = {"kit": kit.resolve().name, "path": str(kit)}
     if setup:
         summary["setup"] = {"size": setup.get("size"), "orientation": setup.get("orientation"),
-                            "game_type": setup.get("game_type"), "gameplay": setup.get("gameplay"),
+                            "game_type": setup.get("game_type"),
+                            "game_type_description": setup.get("game_type_description"), "gameplay": setup.get("gameplay"),
                             "saved": setup.get("submitted")}
     else:
         summary["setup"] = None
@@ -263,13 +264,16 @@ def cmd_summary(kit: Path) -> int:
         kit_answer, start, background = value(answers, "kit") or {}, value(answers, "start") or {}, value(answers, "background") or {}
         if kit_answer.get("choice") == "yes":
             source = {"type": "ui_kit", "files": len(files_of(kit_answer)), "note": kit_answer.get("note")}
-        elif start.get("choice") == "reference":
-            source = {"type": "reference", "files": len(files_of(start)), "note": start.get("note")}
         else:
-            source = {"type": "description", "colors": value(answers, "colors"),
-                      "theme": (value(answers, "theme") or {}).get("label"),
-                      "ui_style": (value(answers, "ui_style") or {}).get("label"), "note": value(answers, "style_note")}
-        mockups.append({"screen": record.get("screen_label") or stem, "wireframe_files": len(value(answers, "wireframe") or []),
+            source = {"type": "reference", "files": len(files_of(start)), "note": start.get("note")} \
+                if start.get("choice") == "reference" else {"type": "description"}
+            style = {"colors": value(answers, "colors"), "theme": (value(answers, "theme") or {}).get("label"),
+                     "ui_style": (value(answers, "ui_style") or {}).get("label"),
+                     "ui_style_description": record.get("ui_style_description"), "note": value(answers, "style_note")}
+            source.update({k: v for k, v in style.items() if v})
+        names = [s.get("label") or s.get("screen") or "(Codex đoán)" for s in record.get("screens") or []]
+        mockups.append({"screen": ", ".join(names) or record.get("screen_label") or stem,
+                        "wireframe_files": len(value(answers, "wireframe") or []),
                         "source": source, "background": background.get("label"),
                         "background_note": (answers.get("background") or {}).get("note"), "options": record.get("options")})
     full = read_json(kit / "briefs" / "mockup" / "full.json")

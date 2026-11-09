@@ -1,23 +1,19 @@
 {
   "id": "mockup",
   "title": "Tạo UI visual mockup",
-  "intro": "Mô tả một màn mockup.",
+  "intro": "Mỗi file wireframe là một màn cần làm mockup.",
   "questions": [
-    {
-      "id": "screen",
-      "type": "single",
-      "title": "Màn nào?",
-      "required": true,
-      "options_from": "kit:screens+catalog:screens",
-      "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn"}
-    },
     {
       "id": "wireframe",
       "type": "files",
       "title": "Add wireframe",
-      "hint": "PNG, JPG hoặc ZIP. Wireframe đã làm bằng $wireframe được điền sẵn.",
+      "hint": "PNG, JPG hoặc ZIP. Wireframe đã làm bằng $wireframe được điền sẵn; bấm × để bỏ màn không làm. Tên màn để trống thì Codex tự đoán từ ảnh.",
       "required": true,
-      "default_from": "kit:wireframes"
+      "default_from": "kit:wireframes",
+      "file_fields": [
+        {"id": "screen", "label": "Tên màn", "placeholder": "Chọn hoặc gõ tên màn (để trống: Codex tự đoán)", "suggestions_from": "kit:screens+catalog:screens"},
+        {"id": "note", "label": "Mô tả màn", "placeholder": "Màn này dùng để làm gì, cần có gì (không bắt buộc)", "multiline": true}
+      ]
     },
     {
       "id": "kit",
@@ -37,8 +33,8 @@
       "required": true,
       "show_if": {"question": "kit", "in": ["no"]},
       "options": [
-        {"value": "reference", "label": "Có reference", "attach": true, "attach_required": true, "describe": true,
-         "attach_hint": "Không giới hạn số ảnh"},
+        {"value": "reference", "label": "Có reference", "hint": "Các câu style bên dưới không bắt buộc; câu nào để trống thì lấy theo ảnh reference.",
+         "attach": true, "attach_required": true, "describe": true, "attach_hint": "Không giới hạn số ảnh"},
         {"value": "describe", "label": "Không có reference, tự sáng tạo theo mô tả"}
       ]
     },
@@ -46,14 +42,14 @@
       "id": "colors",
       "type": "text",
       "title": "Màu sắc gì?",
-      "show_if": {"question": "start", "in": ["describe"]}
+      "show_if": {"question": "start", "in": ["describe", "reference"]}
     },
     {
       "id": "theme",
       "type": "single",
       "title": "Màu tươi sáng hay dark theme?",
-      "required": true,
-      "show_if": {"question": "start", "in": ["describe"]},
+      "required_if": {"question": "start", "in": ["describe"]},
+      "show_if": {"question": "start", "in": ["describe", "reference"]},
       "options": [
         {"value": "bright", "label": "Tươi sáng"},
         {"value": "dark", "label": "Dark theme"}
@@ -63,17 +59,18 @@
       "id": "ui_style",
       "type": "single",
       "title": "UI style gì?",
-      "required": true,
-      "show_if": {"question": "start", "in": ["describe"]},
+      "required_if": {"question": "start", "in": ["describe"]},
+      "show_if": {"question": "start", "in": ["describe", "reference"]},
       "options_from": "catalog:art_styles",
-      "other": {"label": "Khác", "placeholder": "Tên hoặc mô tả style"}
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên style", "describe": true,
+                "describe_placeholder": "Mô tả style này: hình khối, viền, màu, chất liệu, font (không bắt buộc)"}
     },
     {
       "id": "style_note",
       "type": "text",
       "title": "Mô tả thêm",
       "multiline": true,
-      "show_if": {"question": "start", "in": ["describe"]}
+      "show_if": {"question": "start", "in": ["describe", "reference"]}
     },
     {
       "id": "background",
@@ -92,6 +89,7 @@
       "id": "options",
       "type": "number",
       "title": "Tạo mấy option?",
+      "hint": "Số option cho mỗi màn.",
       "required": true,
       "min": 1,
       "max": 5,

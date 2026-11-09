@@ -44,6 +44,34 @@ One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.js
 | `goto` | Screen this item opens in the flow and demo, or `back`. Use the screen name without `__v1`. |
 | `label` | Name for this item in wireframes and the flow, when it has no text. |
 | `group` | PSD folder. Neighboring items with the same group share a folder, so keep them adjacent in the list. |
+| `wf` | Wireframe kind, listed below. Only the wireframe uses it; an item with only `wf` draws nothing in the mockup. |
+| `icon` | Wireframe icon name, listed below. |
+| `sub` | Wireframe second line under the text, smaller. |
+| `badge` | Wireframe red dot: `true`, a short text such as `"3"` or `"HOT"`, or `"+"` for the add button on a `pill`. |
+| `selected` | Wireframe: `true` marks the current `tab`. |
+| `align` | Wireframe text alignment: `left`, `center` or `right`. Text kinds default to `left` with a left anchor. |
+
+## Wireframe items
+
+Without `wf`, the kind is guessed from the element name, such as `buttons/` as `button` and `icons/` as `icon_button`, so set it whenever the guess would be wrong.
+
+| `wf` | Draws | Typical use |
+|---|---|---|
+| `panel` | Translucent rounded surface | Section backgrounds, popup bodies |
+| `card` | Raised card with icon and text; wide cards put the icon on the left | Offers, items, building info |
+| `button` | Secondary button | Normal actions |
+| `button_primary` | Large bright button | The screen's one main action |
+| `icon_button` | Square button with icon and a short caption | Side features: daily, spin, mail |
+| `pill` | Rounded value with icon, `badge: "+"` adds a plus | Currencies, energy |
+| `progress` | Track with a fill from `fill`, text on top | Progress, EXP, HP |
+| `title`, `text`, `label` | Large bold title, body text, small uppercase caption | Headings, descriptions, section captions |
+| `image` | Striped placeholder with an icon | Art, characters, previews |
+| `avatar` | Round portrait frame | Player profile |
+| `tab` | Icon over a caption; `selected` highlights it | Bottom or side navigation |
+| `bar` | Full-width strip | Top and bottom bars behind tabs |
+| `badge`, `slot`, `divider` | Red count, empty dashed slot, thin line | Notices, empty inventory slots, separators |
+
+Icons, from Lucide: settings, coins, gem, zap, heart, star, store, shopping-cart, house, play, pause, trophy, medal, crown, gift, package, backpack, user, circle-user, users, lock, x, arrow-left, chevron-left, chevron-right, plus, mail, bell, calendar, clock, timer, hourglass, map, flag, sword, swords, shield, hammer, wrench, key, scroll, book-open, list-checks, ticket, rotate-ccw, refresh-cw, tv, ban, volume-2, music, globe, info, circle-help, check, thumbs-up, message-circle, share-2, sparkles, flame, target, award, castle, car, puzzle, gamepad-2, rocket, image, search, menu, sliders-horizontal, and more in `assets/wire_icons.json`. Short aliases also work: coin, energy, close, back, shop, profile, inventory, mission, ranking, daily, spin, sound, language, ads, no_ads, chest, battle, reward.
 
 ## Layout guide for rearranging
 

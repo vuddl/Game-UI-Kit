@@ -9,8 +9,39 @@
       "title": "Export file Photoshop hay ảnh PNG?",
       "required": true,
       "options": [
-        {"value": "psd", "label": "File Photoshop (PSD)"},
-        {"value": "png", "label": "Ảnh PNG"}
+        {
+          "value": "psd",
+          "label": "File Photoshop (PSD)"
+        },
+        {
+          "value": "png",
+          "label": "Ảnh PNG"
+        }
+      ]
+    },
+    {
+      "id": "background",
+      "type": "single",
+      "title": "Background trong file PSD vẽ lại hay để 1 layer ảnh?",
+      "hint": "Hỏi lại mỗi lần export. Vẽ lại: dựng background bằng shape và effect khi được. Ảnh: một smart object giữ ảnh gốc.",
+      "required": true,
+      "show_if": {
+        "question": "format",
+        "in": [
+          "psd"
+        ]
+      },
+      "options": [
+        {
+          "value": "image",
+          "label": "Một layer ảnh (smart object)",
+          "hint": "Nhẹ, giữ nguyên ảnh gốc."
+        },
+        {
+          "value": "redraw",
+          "label": "Vẽ lại bằng shape và effect",
+          "hint": "Sửa được từng phần; background nhiều chi tiết có thể vẫn phải để ảnh."
+        }
       ]
     },
     {

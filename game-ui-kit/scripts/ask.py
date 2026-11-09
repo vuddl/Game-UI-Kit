@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Ask the user a form in their browser, served from localhost, and save the answers in the kit.
 
-    ask.py <form> <kit> --out briefs/<name>.json
+    ask.py <form> <kit> --out briefs/<name>.json     open the form and wait for the answer
+    ask.py <kit> --wait                              wait again, or collect an answer already given
 
-<form> is a file in the skill's forms/ folder: setup, wireframe, full, mockup or export.
+The form server runs on its own, so it survives the calling command being cut off or the
+turn ending, and keeps the answer until --wait collects it.
+
+<form> is a file in the skill's forms/ folder: setup, wireframe, full, mockup, revise or export.
+The revise form offers the images in preview/<--kind>/ of the --screens given.
 Prints a JSON line with the answers when the user submits. Attached files go to <kit>/inputs/.
 Nothing else is written: no copy of the form, no logs. Files in inputs/ that no answer file
 under <kit>/briefs/ refers to any more are deleted after every form.
@@ -54,13 +59,19 @@ def read_json(path: Path, default=None):
 # ---------- option lists ----------
 
 def catalog_rows(heading: str) -> list[dict]:
+    """Rows of a catalog table. The form shows the Vietnamese "Mô tả trên form" column and the reference games."""
     text = CATALOG.read_text(encoding="utf-8")
     part = text.split(f"## {heading}", 1)[1].split("\n## ", 1)[0]
-    rows = []
+    rows, header = [], []
     for line in part.splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) >= 3 and cells[0].isdigit():
-            rows.append({"value": slug(cells[1]), "label": cells[1], "hint": cells[2]})
+        if cells and cells[0] == "#":
+            header = cells
+        elif len(cells) >= 3 and cells[0].isdigit():
+            row = dict(zip(header, cells))
+            hint = row.get("Mô tả trên form") or cells[2]
+            games = row.get("Reference games")
+            rows.append({"value": slug(cells[1]), "label": cells[1], "hint": f"{hint} Ví dụ: {games}." if games else hint})
     return rows
 
 
@@ -102,6 +113,36 @@ def kit_screens(kit: Path) -> list[dict]:
     return options
 
 
+def screen_label(kit: Path, screen: str) -> str:
+    """The name the user gave a screen in a form, else one made from its id."""
+    for folder in ("wireframe", "mockup"):
+        briefs = kit / "briefs" / folder
+        for path in sorted(briefs.glob("*.json")) if briefs.exists() else []:
+            record = read_json(path) or {}
+            if record.get("screen") == screen and record.get("screen_label"):
+                return record["screen_label"]
+            for entry in record.get("screens") or []:
+                if entry.get("screen") == screen and entry.get("label"):
+                    return entry["label"]
+    return screen.replace("_", " ").title()
+
+
+def kit_previews(kit: Path, kind: str, screens: list[str]) -> list[dict]:
+    """The rendered versions of the given screens, for the revise form, each with its image."""
+    folder = kit / "preview" / kind
+    options = []
+    for stem in kit_layouts(kit):
+        if screens and screen_of(stem) not in screens:
+            continue
+        image = folder / f"{stem}.png"
+        if not image.exists():
+            continue
+        match = VARIANT.match(stem)
+        label = f"{screen_label(kit, screen_of(stem))}, bản {match.group(2) if match else 1}"
+        options.append({"value": stem, "label": label, "image": image.relative_to(kit).as_posix()})
+    return options
+
+
 def kit_mockups(kit: Path) -> list[dict]:
     options = []
     for stem in kit_layouts(kit):
@@ -110,6 +151,9 @@ def kit_mockups(kit: Path) -> list[dict]:
         image = f"preview/mockups/{stem}.png"
         options.append({"value": stem, "label": label, "image": image if (kit / image).exists() else None})
     return options
+
+
+PREVIEW = {"kind": "mockups", "screens": []}  # set from --kind and --screens, for kit:previews
 
 
 def options_for(source: str, kit: Path) -> list[dict]:
@@ -125,6 +169,8 @@ def options_for(source: str, kit: Path) -> list[dict]:
             found = kit_screens(kit)
         elif part == "kit:mockups":
             found = kit_mockups(kit)
+        elif part == "kit:previews":
+            found = kit_previews(kit, PREVIEW["kind"], PREVIEW["screens"])
         else:
             raise SystemExit(f"Unknown options_from: {part}")
         for option in found:
@@ -152,7 +198,8 @@ def defaults_for(source: str, kit: Path):
     if source == "kit:wireframes":
         folder = kit / "preview" / "wireframes"
         files = sorted(folder.glob("*.png")) if folder.exists() else []
-        return [{"path": p.relative_to(kit).as_posix(), "name": p.name, "note": ""} for p in files]
+        return [{"path": p.relative_to(kit).as_posix(), "name": p.name, "screen": screen_label(kit, screen_of(p.stem)),
+                 "note": ""} for p in files]
     raise SystemExit(f"Unknown default_from: {source}")
 
 
@@ -164,6 +211,9 @@ def load_form(name: str, kit: Path) -> dict:
     for question in form["questions"]:
         if "options_from" in question:
             question["options"] = question.get("options", []) + options_for(question.pop("options_from"), kit)
+        for field in question.get("file_fields") or []:
+            if "suggestions_from" in field:
+                field["suggestions"] = [o["label"] for o in options_for(field.pop("suggestions_from"), kit)]
     return form
 
 
@@ -225,12 +275,28 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         record["size"], record["orientation"] = [width, height], orientation
         game = (answers.get("game_type") or {}).get("value") or {}
         record["game_type"] = game.get("label")
+        if game.get("choice") == "other" and (game.get("note") or "").strip():
+            record["game_type_description"] = game["note"].strip()
         record["gameplay"] = (answers.get("gameplay") or {}).get("value")
-    if form_id in ("wireframe", "mockup"):
+    if form_id == "wireframe":
         screen = (answers.get("screen") or {}).get("value") or {}
         record["screen"] = screen.get("choice") if screen.get("choice") != "other" else slug(screen.get("label"))
         record["screen_label"] = screen.get("label")
+    if form_id in ("wireframe", "mockup"):
         record["options"] = int((answers.get("options") or {}).get("value") or 1)
+    if form_id == "mockup":
+        # One screen per wireframe file. A blank name is for Codex to guess from the image.
+        record["screens"] = [{"screen": slug(f.get("screen")) if (f.get("screen") or "").strip() else "",
+                              "label": (f.get("screen") or "").strip(), "note": (f.get("note") or "").strip(),
+                              "file": f.get("path")}
+                             for f in (answers.get("wireframe") or {}).get("value") or []]
+        style = (answers.get("ui_style") or {}).get("value") or {}
+        if style.get("choice") == "other" and (style.get("note") or "").strip():
+            record["ui_style_description"] = style["note"].strip()
+    if form_id == "revise":
+        record["kind"] = PREVIEW["kind"]
+        record["versions"] = [{"layout": e["choice"], "label": e.get("label"), "change": (e.get("note") or "").strip(),
+                               "files": e.get("files", [])} for e in (answers.get("versions") or {}).get("value") or []]
     if form_id == "wireframe":
         record["prototype"] = ((answers.get("prototype") or {}).get("value") or {}).get("choice") == "yes"
     if form_id == "full":
@@ -240,6 +306,9 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
     if form_id == "export":
         record["formats"] = [e["choice"] for e in (answers.get("format") or {}).get("value") or []]
         record["layouts"] = [e["choice"] for e in (answers.get("layouts") or {}).get("value") or []]
+        background = ((answers.get("background") or {}).get("value") or {}).get("choice")
+        if background:
+            record["background"] = background
     return record
 
 
@@ -394,6 +463,8 @@ def serve(args, kit: Path) -> int:
     removed = clean_inputs(kit)
     if args.child:
         info = read_json(state, {}) or {}
+        if info.get("pid") != os.getpid():  # a newer form owns the state now
+            return 0
         info.update({"finished": True, "submitted": bool(finished), "removed_unused_files": removed})
         state.write_text(json.dumps(info), encoding="utf-8")
     else:
@@ -413,20 +484,31 @@ def serve(args, kit: Path) -> int:
 def start_detached(args, kit: Path) -> int:
     """Start the form server in the background and return once its URL is known."""
     state = wait_file(kit)
+    old = read_json(state)
+    if old and not old.get("finished") and old.get("pid"):
+        try:  # close a form left open, so it cannot overwrite this one's state
+            os.kill(int(old["pid"]), 15)
+        except (OSError, ValueError):
+            pass
     if state.exists():
         state.unlink()
     command = [sys.executable, str(Path(__file__).resolve()), args.form, str(kit), "--out", args.out,
-               "--timeout", str(args.timeout), "--child"] + (["--no-browser"] if args.no_browser else [])
-    flags = 0
+               "--timeout", str(args.keep), "--child", "--kind", args.kind] + (["--no-browser"] if args.no_browser else [])
+    if args.screens:
+        command += ["--screens", args.screens]
+    options = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.name == "nt":
         flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     creationflags=flags, start_new_session=os.name != "nt")
-    for _ in range(100):
+        try:
+            subprocess.Popen(command, creationflags=flags | 0x01000000, **options)  # CREATE_BREAKAWAY_FROM_JOB
+        except OSError:
+            subprocess.Popen(command, creationflags=flags, **options)
+    else:
+        subprocess.Popen(command, start_new_session=True, **options)
+    for _ in range(150):
         info = read_json(state)
         if info:
-            print(f"FORM_URL {info['url']}")
-            print("The form is open. Run ask.py --wait with the same kit to get the answers.")
+            print(f"FORM_URL {info['url']}", flush=True)
             return 0
         time.sleep(0.1)
     print("The form server did not start.", file=sys.stderr)
@@ -441,12 +523,16 @@ def wait_answers(args, kit: Path) -> int:
         return 1
     out = kit / info["out"]
     deadline = time.time() + args.timeout
+    next_note = time.time() + 60
     while not info.get("finished") and time.time() < deadline:
         time.sleep(1)
         info = read_json(state, info) or info
+        if time.time() >= next_note:
+            print("still waiting for the form", flush=True)
+            next_note = time.time() + 60
     if not info.get("finished"):
         print(json.dumps({"status": "WAITING", "url": info.get("url"),
-                          "message": "The form is still open. Run --wait again."}))
+                          "message": "The form is still open. Run ask.py <kit> --wait again; do not end the turn."}))
         return 4
     state.unlink()
     if not info.get("submitted"):
@@ -459,17 +545,23 @@ def wait_answers(args, kit: Path) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("form", nargs="?", help="setup, wireframe, full, mockup or export")
+    parser.add_argument("form", nargs="?", help="setup, wireframe, full, mockup, revise or export")
     parser.add_argument("kit", help="Kit folder, such as ui_art/<kit>")
     parser.add_argument("--out", help="Answer file, relative to the kit, under briefs/")
-    parser.add_argument("--timeout", type=int, default=3600, help="Seconds to wait for an answer")
+    parser.add_argument("--timeout", type=int, default=1800, help="Seconds this command waits for the answer")
+    parser.add_argument("--keep", type=int, default=86400, help="Seconds the form stays open")
     parser.add_argument("--no-browser", action="store_true", help="Only print the URL")
-    parser.add_argument("--detach", action="store_true", help="Start the form in the background and return")
+    parser.add_argument("--kind", choices=["wireframes", "mockups"], default="mockups",
+                        help="revise form: which images to offer")
+    parser.add_argument("--screens", default="", help="revise form: comma-separated screens to offer, default all")
+    parser.add_argument("--detach", action="store_true", help="Open the form and return at once, without waiting")
+    parser.add_argument("--foreground", action="store_true", help="Serve in this process, for testing")
     parser.add_argument("--wait", action="store_true", help="Wait for the form started with --detach")
     parser.add_argument("--clean", action="store_true", help="Only delete unused files in inputs/")
     parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     kit = Path(args.kit)
+    PREVIEW.update(kind=args.kind, screens=[s.strip() for s in args.screens.split(",") if s.strip()])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     if args.clean:
@@ -482,9 +574,12 @@ def main() -> int:
     if not args.out.replace("\\", "/").startswith("briefs/"):
         parser.error("--out must be under briefs/")
     kit.mkdir(parents=True, exist_ok=True)
-    if args.detach:
-        return start_detached(args, kit)
-    return serve(args, kit)
+    if args.foreground or args.child:
+        return serve(args, kit)
+    started = start_detached(args, kit)
+    if started or args.detach:
+        return started
+    return wait_answers(args, kit)
 
 
 if __name__ == "__main__":

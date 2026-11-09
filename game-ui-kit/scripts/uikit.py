@@ -30,6 +30,9 @@ try:
 except ImportError as exc:
     sys.exit(f"Missing dependency: {exc.name}. Install with: py -3 -m pip install pillow numpy")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import psd_recipe as recipes  # noqa: E402
+
 NAME_RE = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)*$")
 STATE_RE = re.compile(r"_(normal|hover|pressed|selected|disabled|locked)$")
 ALPHA_FLOOR = 8
@@ -775,7 +778,10 @@ def cmd_states(args) -> int:
 
 LAYOUT_KEYS = {"size", "title", "background", "reference", "font", "items"}
 ITEM_KEYS = {"element", "text", "x", "y", "w", "h", "anchor", "mode", "border_scale", "opacity",
-             "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label", "name", "role"}
+             "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label", "name", "role",
+             "wf", "icon", "sub", "badge", "selected", "align"}
+WF_KINDS = {"panel", "card", "button", "button_primary", "icon_button", "pill", "progress", "title", "text", "label",
+            "image", "avatar", "tab", "bar", "badge", "slot", "divider"}
 ANCHORS = {"top_left": (0, 0), "top": (0.5, 0), "top_right": (1, 0), "left": (0, 0.5), "center": (0.5, 0.5),
            "right": (1, 0.5), "bottom_left": (0, 1), "bottom": (0.5, 1), "bottom_right": (1, 1)}
 VARIANT_RE = re.compile(r"^(.+)__v(\d+)$")
@@ -865,8 +871,8 @@ def read_layout(path: Path) -> dict:
         unknown = set(item) - ITEM_KEYS
         if unknown:
             bad(f"{where}: unknown keys {sorted(unknown)}")
-        if "element" not in item and "text" not in item:
-            bad(f'{where}: needs "element" or "text"')
+        if "element" not in item and "text" not in item and "wf" not in item:
+            bad(f'{where}: needs "element", "text" or "wf"')
         if not is_number(item.get("x")) or not is_number(item.get("y")):
             bad(f'{where}: needs numeric "x" and "y"')
         for key in ("w", "h", "text_size", "text_stroke", "border_scale", "opacity", "fill"):
@@ -880,6 +886,10 @@ def read_layout(path: Path) -> dict:
             bad(f'{where}: role must be ui or art')
         if item.get("mode", "auto") not in ("auto", "nine", "fit", "stretch"):
             bad(f'{where}: mode must be auto, nine, fit or stretch')
+        if "wf" in item and item["wf"] not in WF_KINDS:
+            bad(f'{where}: wf must be one of {sorted(WF_KINDS)}')
+        if item.get("align", "center") not in ("left", "center", "right"):
+            bad(f'{where}: align must be left, center or right')
         if "text_color" in item:
             try:
                 ImageColor.getrgb(item["text_color"])
@@ -1169,7 +1179,7 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
                 missing.append(name)
             box = item_box(item, None, size)
         x0, y0, x1, y1 = box
-        label = name or str(item.get("text"))
+        label = name or str(item.get("text") or item.get("wf"))
         boxes.append({"name": label, "box": box, "sprite": bool(sprite),
                       "touch": "goto" in item or bool(name and ("_normal" in name or name.split("/")[-1].startswith("btn_")))})
         if sprite is not None:
@@ -1368,33 +1378,260 @@ def cmd_choose(args) -> int:
     return 0
 
 
-def render_wireframe(kit: Path, path: Path, manifest: dict) -> Path:
-    layout = read_layout(path)
+WIRE_ICONS: dict | None = None
+WIRE_CSS = """
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:__W__px;height:__H__px;overflow:hidden}
+body{--u:__U__px;--accent:#c8f03c;--accent-ink:#17210a;--ink:#eef2fa;--soft:#aab4c8;--muted:#7a869c;
+  --surface:rgba(255,255,255,.055);--surface2:rgba(255,255,255,.09);--line:rgba(255,255,255,.10);
+  font-family:"Segoe UI","Be Vietnam Pro","Inter",system-ui,-apple-system,"Noto Sans",sans-serif;color:var(--ink);
+  background:__BG__;position:relative;-webkit-font-smoothing:antialiased}
+.i{position:absolute;display:flex;align-items:center;justify-content:center;gap:calc(var(--u)*5);
+  text-align:center;line-height:1.15;overflow:visible}
+.i.al-left{justify-content:flex-start;text-align:left}.i.al-right{justify-content:flex-end;text-align:right}
+.t{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.stack{display:flex;flex-direction:column;align-items:inherit;gap:calc(var(--u)*2);min-width:0}
+.i.al-left .stack{align-items:flex-start}.i.al-center .stack{align-items:center}
+.sub{color:var(--soft);font-weight:500;font-size:.62em}
+svg.ic{flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.k-panel{background:var(--surface);border:calc(var(--u)*.8) solid var(--line);border-radius:calc(var(--u)*14)}
+.k-card{background:linear-gradient(160deg,rgba(255,255,255,.10),rgba(255,255,255,.04));border:calc(var(--u)*.8) solid var(--line);
+  border-radius:calc(var(--u)*12);padding:calc(var(--u)*8);flex-direction:column;font-weight:600}
+.k-card.wide{flex-direction:row;justify-content:flex-start;text-align:left;gap:calc(var(--u)*8);padding:0 calc(var(--u)*12)}
+.k-card.wide .stack{align-items:flex-start}
+.k-card.wide svg.ic{color:var(--accent)}
+.k-button{background:#26324a;border:calc(var(--u)*.8) solid rgba(255,255,255,.12);border-radius:calc(var(--u)*12);font-weight:700;padding:0 calc(var(--u)*8)}
+.k-button_primary{background:linear-gradient(180deg,#d6fb55,var(--accent));color:var(--accent-ink);border-radius:calc(var(--u)*14);
+  font-weight:800;box-shadow:0 calc(var(--u)*4) 0 #7d9a1c,0 calc(var(--u)*8) calc(var(--u)*18) rgba(200,240,60,.25);letter-spacing:.02em;padding:0 calc(var(--u)*8)}
+.k-icon_button{background:#1d2840;border:calc(var(--u)*.8) solid var(--line);border-radius:calc(var(--u)*12);flex-direction:column;
+  gap:calc(var(--u)*3);font-weight:600;color:var(--ink)}
+.k-icon_button .t{font-size:.9em;color:var(--soft)}
+.k-pill{background:rgba(0,0,0,.28);border:calc(var(--u)*.8) solid var(--line);font-weight:700;padding:0 calc(var(--u)*3);justify-content:flex-start;gap:calc(var(--u)*3)}
+.k-pill .t{flex:1;text-align:center;text-overflow:clip}
+.k-pill .plus{width:calc(var(--u)*13);height:calc(var(--u)*13);border-radius:50%;background:var(--accent);color:var(--accent-ink);
+  display:flex;align-items:center;justify-content:center;flex:none}
+.k-progress{background:#1a2438;border:calc(var(--u)*.8) solid var(--line);overflow:hidden;font-weight:700}
+.k-progress .fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#9fd12b,var(--accent));border-radius:inherit}
+.k-progress .t{position:relative;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.k-title{font-weight:800;letter-spacing:.01em}
+.k-text{color:var(--soft);font-weight:500}
+.k-label{color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.k-image{background:repeating-linear-gradient(135deg,rgba(255,255,255,.035) 0 calc(var(--u)*6),rgba(255,255,255,.065) calc(var(--u)*6) calc(var(--u)*12));
+  border:calc(var(--u)*.8) dashed rgba(255,255,255,.18);border-radius:calc(var(--u)*12);color:rgba(255,255,255,.35);flex-direction:column;font-weight:600}
+.k-image .t{color:var(--soft)}
+.k-avatar{background:linear-gradient(160deg,#3a4a6b,#25314a);border:calc(var(--u)*1.2) solid var(--accent);border-radius:50%;color:var(--soft)}
+.k-tab{flex-direction:column;gap:calc(var(--u)*3);color:var(--muted);font-weight:600;border-radius:calc(var(--u)*10)}
+.k-tab.sel{color:var(--accent);background:rgba(200,240,60,.10)}
+.k-tab.sel::after{content:"";position:absolute;bottom:calc(var(--u)*-1);left:30%;right:30%;height:calc(var(--u)*2);background:var(--accent);border-radius:9px}
+.k-bar{background:rgba(10,16,30,.85);border-top:calc(var(--u)*.8) solid var(--line);border-bottom:calc(var(--u)*.8) solid var(--line)}
+.k-badge{background:#ff4d5e;color:#fff;border-radius:999px;font-weight:800;box-shadow:0 0 0 calc(var(--u)*1.2) #0d1526}
+.k-slot{border:calc(var(--u)*.9) dashed rgba(255,255,255,.22);border-radius:calc(var(--u)*10);background:rgba(255,255,255,.03);color:rgba(255,255,255,.35)}
+.k-divider{background:var(--line)}
+.dot{position:absolute;top:calc(var(--u)*-3);right:calc(var(--u)*-3);min-width:calc(var(--u)*11);height:calc(var(--u)*11);padding:0 calc(var(--u)*3);
+  border-radius:999px;background:#ff4d5e;color:#fff;font-size:calc(var(--u)*7);font-weight:800;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 0 calc(var(--u)*1.2) #0d1526}
+.ic-coins{color:#ffc93c}.ic-gem{color:#4fd8ff}.ic-zap{color:#ffe14d}.ic-heart{color:#ff5d73}.ic-star{color:#ffd54a}.ic-ticket{color:#c79bff}
+"""
+ICON_TINT = {"coins", "gem", "zap", "heart", "star", "ticket"}
+
+
+def wire_icon(name: str | None, size: float) -> str:
+    """Inline SVG for an icon name or alias from assets/wire_icons.json, or '' when unknown."""
+    global WIRE_ICONS
+    if not name:
+        return ""
+    if WIRE_ICONS is None:
+        path = Path(__file__).resolve().parent.parent / "assets" / "wire_icons.json"
+        WIRE_ICONS = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"alias": {}, "icons": {}}
+    key = str(name).lower().replace(" ", "-")
+    key = WIRE_ICONS["alias"].get(key.replace("-", "_"), key)
+    body = WIRE_ICONS["icons"].get(key)
+    if not body:
+        return ""
+    tint = f" ic-{key}" if key in ICON_TINT else ""
+    return (f'<svg class="ic{tint}" viewBox="0 0 24 24" width="{size:.0f}" height="{size:.0f}" '
+            f'aria-hidden="true">{body}</svg>')
+
+
+def wire_kind(item: dict) -> str:
+    """The wireframe kind of an item: its "wf", else a guess from its element and keys."""
+    if item.get("wf"):
+        return item["wf"]
+    name = (item.get("element") or "").lower()
+    base = name.split("/")[-1]
+    if "fill" in item or name.startswith("bars/") or "bar" in base and "progress" in base:
+        return "progress"
+    if name.startswith("buttons/") or base.startswith("btn_"):
+        return "button_primary" if any(k in base for k in ("play", "start", "battle", "primary", "buy", "claim", "green")) else "button"
+    if name.startswith("icons/") or base.startswith("icon_"):
+        return "icon_button"
+    if name.startswith(("panels/", "popups/", "frames/", "cards/")):
+        return "panel"
+    if name.startswith(("characters/", "items/", "art/", "backgrounds/")) or item.get("role") == "art":
+        return "image"
+    if name:
+        return "card"
+    size = item.get("text_size") or 0
+    return "title" if size >= 56 else "text"
+
+
+def wire_icon_name(item: dict) -> str | None:
+    if item.get("icon"):
+        return item["icon"]
+    base = (item.get("element") or "").split("/")[-1]
+    base = re.sub(r"^(icon|icn|btn|button|ic)_", "", base)
+    base = re.sub(r"_(normal|pressed|disabled|selected|\d+)$", "", base)
+    return base or None
+
+
+def wireframe_html(layout: dict, manifest: dict) -> str:
+    width, height = layout["size"]
+    u = min(width, height) / 360
+    background = layout.get("background")
+    bg = background if isinstance(background, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", background) else \
+        "radial-gradient(120% 70% at 50% 0%,#1d2b4a 0%,#111a2e 55%,#0b1222 100%)"
+    parts = []
+    for item in layout["items"]:
+        name = item.get("element")
+        entry = manifest["elements"].get(name) if name else None
+        native = (entry["width"], entry["height"]) if entry and entry.get("width") else None
+        x0, y0, x1, y1 = item_box(item, native, (width, height))
+        w, h = x1 - x0, y1 - y0
+        kind = wire_kind(item)
+        text = item.get("text")
+        text = text if text is not None else (item.get("label") if kind in ("card", "image", "button", "button_primary", "tab", "slot") else None)
+        wide = kind == "card" and w > 2.2 * h
+        icon_px = {"icon_button": min(w, h) * (0.42 if text else 0.5), "tab": min(w, h) * 0.36, "pill": h * 0.52,
+                   "image": min(w, h) * 0.3, "avatar": min(w, h) * 0.5, "slot": min(w, h) * 0.38,
+                   "card": h * 0.45 if wide else min(w, h) * 0.32}.get(kind, h * 0.5)
+        icon_name = wire_icon_name(item) if kind not in ("text", "title", "label", "progress", "bar", "divider", "badge", "panel") \
+            or item.get("icon") else None
+        if kind == "image" and not icon_name:
+            icon_name = "image"
+        if kind == "avatar" and not icon_name:
+            icon_name = "user"
+        if kind == "pill" and not item.get("icon"):
+            icon_name = wire_icon_name(item)
+        svg = wire_icon(icon_name, icon_px)
+        if not svg and kind in ("image", "avatar"):
+            svg = wire_icon("image" if kind == "image" else "user", icon_px)
+        if kind in ("icon_button", "slot") and not svg and not text:
+            text = item.get("label") or (name.split("/")[-1] if name else "")
+        size = item.get("text_size") or {
+            "title": h * 0.62, "text": h * 0.5, "label": h * 0.55, "button_primary": min(h * 0.38, w * 0.16),
+            "button": min(h * 0.36, w * 0.14), "pill": h * 0.4, "progress": h * 0.5, "tab": min(w, h) * 0.17,
+            "icon_button": min(w, h) * 0.15, "badge": h * 0.6, "card": h * 0.28 if wide else min(w, h) * 0.12,
+            "image": min(w, h) * 0.06,
+            "slot": min(w, h) * 0.14}.get(kind, h * 0.4)
+        align = item.get("align") or ("left" if kind in ("title", "text", "label") and item.get("anchor", "top_left").endswith("left")
+                                       else "center")
+        style = [f"left:{x0}px", f"top:{y0}px", f"width:{w}px", f"height:{h}px", f"font-size:{size:.1f}px"]
+        if kind in ("pill", "progress", "badge"):
+            style.append(f"border-radius:{h / 2:.0f}px")
+        if item.get("text_color"):
+            style.append(f"color:{item['text_color']}")
+        if item.get("opacity") is not None:
+            style.append(f"opacity:{item['opacity']}")
+        classes = f"i k-{kind} al-{align}" + (" sel" if item.get("selected") else "") + (" wide" if wide else "")
+        inner = []
+        if kind == "progress":
+            inner.append(f'<div class="fill" style="width:{max(0.0, min(1.0, item.get("fill", 0.6))) * 100:.1f}%"></div>')
+        if svg:
+            inner.append(svg)
+        if text not in (None, ""):
+            label = html.escape(str(text))
+            sub = f'<span class="sub">{html.escape(str(item["sub"]))}</span>' if item.get("sub") else ""
+            inner.append(f'<span class="stack"><span class="t">{label}</span>{sub}</span>' if sub else f'<span class="t">{label}</span>')
+        if kind == "pill" and item.get("goto") is not None or kind == "pill" and item.get("badge") == "+":
+            inner.append(f'<span class="plus" style="width:{h * 0.6:.0f}px;height:{h * 0.6:.0f}px">{wire_icon("plus", h * 0.4)}</span>')
+        elif item.get("badge") not in (None, "", False):
+            badge = "" if item["badge"] is True else html.escape(str(item["badge"]))
+            inner.append(f'<span class="dot">{badge}</span>')
+        parts.append(f'<div class="{classes}" style="{";".join(style)}">{"".join(inner)}</div>')
+    css = WIRE_CSS.replace("__W__", str(width)).replace("__H__", str(height)).replace("__U__", f"{u:.3f}").replace("__BG__", bg)
+    return (f'<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>{css}</style></head>'
+            f'<body>{"".join(parts)}</body></html>')
+
+
+def find_browser() -> str | None:
+    """A Chromium-based browser that can take headless screenshots: Edge, Chrome or Chromium."""
+    import os
+    candidates = [os.environ.get("UIKIT_BROWSER")]
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
+        if base:
+            candidates += [f"{base}/Microsoft/Edge/Application/msedge.exe", f"{base}/Google/Chrome/Application/chrome.exe"]
+    candidates += ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                   "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+    candidates += [shutil.which(n) for n in ("msedge", "microsoft-edge", "google-chrome", "chromium", "chromium-browser", "chrome")]
+    return next((c for c in candidates if c and Path(c).exists()), None)
+
+
+def screenshot_html(page: str, size: tuple[int, int], out: Path) -> bool:
+    """Render an HTML page to a PNG of exactly this size with a headless browser. False when none works."""
+    import tempfile
+    browser = find_browser()
+    if not browser:
+        return False
+    with tempfile.TemporaryDirectory(prefix="uikit_wire_") as tmp:
+        page_path = Path(tmp) / "page.html"
+        page_path.write_text(page, encoding="utf-8")
+        shot = Path(tmp) / "shot.png"
+        command = [browser, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
+                   "--no-default-browser-check", "--disable-extensions", "--force-device-scale-factor=1",
+                   f"--user-data-dir={Path(tmp) / 'profile'}", f"--window-size={size[0]},{size[1]}",
+                   f"--screenshot={shot}", "--virtual-time-budget=2000", page_path.as_uri()]
+        try:
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        if not shot.exists():
+            return False
+        image = Image.open(shot).convert("RGB")
+        if image.size != tuple(size):
+            image = image.crop((0, 0, min(image.width, size[0]), min(image.height, size[1])))
+            if image.size != tuple(size):
+                return False
+        out.parent.mkdir(parents=True, exist_ok=True)
+        image.save(out)
+    return True
+
+
+def render_wireframe_basic(layout: dict, manifest: dict, kit: Path, out: Path) -> None:
+    """Plain fallback when no browser is available: rounded boxes with labels, no flow text."""
     size = tuple(layout["size"])
-    image = Image.new("RGB", size, (236, 238, 242))
+    image = Image.new("RGB", size, (17, 26, 46))
     draw = ImageDraw.Draw(image)
-    scale = min(size) / 500
-    label_font = load_font(max(11, round(13 * scale)), resolve_font(kit, layout)[0])
+    scale = min(size) / 360
     for item in layout["items"]:
         name = item.get("element")
         entry = manifest["elements"].get(name) if name else None
         native = (entry["width"], entry["height"]) if entry and entry.get("width") else None
         x0, y0, x1, y1 = item_box(item, native, size)
-        label = item.get("label") or item.get("text") or (name.split("/")[-1] if name else "")
-        if name:
-            link = "goto" in item
-            draw.rectangle([x0, y0, x1, y1], fill=(214, 218, 226), outline=(40, 90, 220) if link else (110, 116, 130),
-                           width=max(2, round(2 * scale)) if link else 1)
-            if "text" not in item and x1 - x0 > 30 and y1 - y0 > 30:
-                draw.line([x0, y0, x1, y1], fill=(186, 190, 200))
-                draw.line([x0, y1, x1, y0], fill=(186, 190, 200))
-        if link_target := item.get("goto"):
-            label = f"{label} > {link_target}"
+        kind = wire_kind(item)
+        if kind not in ("text", "title", "label"):
+            fill = (200, 240, 60) if kind == "button_primary" else (38, 50, 74)
+            draw.rounded_rectangle([x0, y0, x1, y1], radius=round(10 * scale), fill=fill, outline=(70, 84, 110))
+            if kind == "progress":
+                draw.rounded_rectangle([x0, y0, x0 + (x1 - x0) * item.get("fill", 0.6), y1], radius=round(10 * scale), fill=(170, 220, 50))
+        label = item.get("text") or item.get("label") or ""
         if label:
-            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), str(label), font=label_font, fill=(30, 34, 44), anchor="mm")
-    out = kit / "preview" / "wireframes" / f"{path.stem}.png"
+            font = load_font(max(10, round(min((y1 - y0) * 0.4, 18 * scale))), resolve_font(kit, layout)[0])
+            draw.text(((x0 + x1) / 2, (y0 + y1) / 2), str(label), font=font, anchor="mm",
+                      fill=(23, 33, 10) if kind == "button_primary" else (235, 240, 250))
     out.parent.mkdir(parents=True, exist_ok=True)
     image.save(out)
+
+
+WIRE_WARNINGS: list[str] = []
+
+
+def render_wireframe(kit: Path, path: Path, manifest: dict) -> Path:
+    layout = read_layout(path)
+    out = kit / "preview" / "wireframes" / f"{path.stem}.png"
+    if not screenshot_html(wireframe_html(layout, manifest), tuple(layout["size"]), out):
+        WIRE_WARNINGS.append("NO_BROWSER: Edge or Chrome was not found or failed, so a plain wireframe was drawn")
+        render_wireframe_basic(layout, manifest, kit, out)
     return out
 
 
@@ -1409,6 +1646,8 @@ def cmd_wireframe(args) -> int:
     print(f"Planned: {plan_text(paths)} as wireframes. No image generation is used.")
     for path in paths:
         print(render_wireframe(kit, path, manifest).relative_to(kit).as_posix())
+    for warning in sorted(set(WIRE_WARNINGS)):
+        print(f"WARNING {warning}")
     return 0
 
 
@@ -1945,6 +2184,93 @@ def vectorize_element(kit: Path, name: str, entry: dict, args) -> dict:
     return spec
 
 
+def recipe_board(source: Image.Image, drawn: Image.Image, score: float, name: str) -> Image.Image:
+    """Source, shape rebuild and difference side by side, for judging a recipe by eye."""
+    height = 300
+    scale = height / max(1, source.height)
+    size = (max(1, round(source.width * scale)), height)
+    a = on_checker(source.resize(size, Image.LANCZOS)).convert("RGB")
+    b = on_checker(drawn.resize(size, Image.LANCZOS)).convert("RGB")
+    diff = np.abs(np.asarray(a).astype(int) - np.asarray(b).astype(int)).sum(axis=2)
+    heat = Image.fromarray(np.clip(diff * 2, 0, 255).astype(np.uint8)).convert("RGB")
+    gap, top = 16, 34
+    board = Image.new("RGB", (size[0] * 3 + gap * 4, height + top + gap), (245, 246, 248))
+    draw = ImageDraw.Draw(board)
+    font = load_font(15, None)
+    for i, (image, label) in enumerate(((a, "Ảnh gốc"), (b, "Shape + effect"), (heat, f"Khác biệt: {score:.1f}"))):
+        x = gap + i * (size[0] + gap)
+        board.paste(image, (x, top))
+        draw.text((x, 9), label, fill=(20, 20, 20), font=font)
+    draw.text((board.width - gap, 9), name, fill=(110, 110, 120), font=font, anchor="ra")
+    return board
+
+
+def cmd_recipe(args) -> int:
+    """Write, check and preview shape recipes, the editable rebuild of each sprite for the PSD."""
+    kit = Path(args.kit)
+    manifest = load_manifest(kit)
+    names = selected(manifest, args.match) if args.match else list(manifest["elements"])
+    if not names:
+        die("NO_MATCH", "no elements matched", 1)
+    report_path = kit / "recipes_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else {}
+    tally = {"good": 0, "check": 0, "none": 0}
+    for name in names:
+        entry = manifest["elements"][name]
+        path = recipes.recipe_path(kit, name)
+        if args.auto and (not path.exists() or args.force):
+            guess = recipes.auto_recipe(kit / entry["file"], name)
+            if guess.get("status") == "AUTO":
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(guess, indent=1, ensure_ascii=False), encoding="utf-8")
+            elif not path.exists():
+                report[name] = {"status": guess.get("status"), "fit": guess.get("fit")}
+                print(f"{name}: {guess.get('status')}, not a simple shape; write its recipe by hand or it stays traced or an image")
+                tally["none"] += 1
+                continue
+        if not path.exists():
+            print(f"{name}: no recipe")
+            tally["none"] += 1
+            continue
+        try:
+            recipe = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            print(f"{name}: BAD_RECIPE {exc}")
+            tally["none"] += 1
+            continue
+        problems = recipes.check_recipe(recipe)
+        if problems:
+            print(f"{name}: BAD_RECIPE " + "; ".join(problems))
+            report[name] = {"status": "BAD_RECIPE", "problems": problems}
+            tally["none"] += 1
+            continue
+        source = Image.open(kit / entry["file"]).convert("RGBA")
+        if list(source.size) != list(recipe["size"]):
+            print(f"{name}: recipe size {recipe['size']} differs from the sprite {list(source.size)}")
+        drawn = recipes.render_recipe(recipe).resize(source.size, Image.LANCZOS)
+        score = score_shapes(np.asarray(source).astype(float), np.asarray(drawn).astype(float))
+        board = kit / "preview" / "recipes" / f"{name}.png"
+        board.parent.mkdir(parents=True, exist_ok=True)
+        recipe_board(source, drawn, score, name).save(board)
+        verdict = "good" if score <= args.max_difference else "check"
+        tally[verdict] += 1
+        count = sum(1 for _ in walk_recipe_layers(recipe["layers"]))
+        report[name] = {"status": verdict.upper(), "difference": round(score, 2), "layers": count,
+                        "board": board.relative_to(kit).as_posix()}
+        print(f"{name}: {verdict.upper()}, difference {score:.1f}, {count} shape layers, view {board.relative_to(kit).as_posix()}")
+    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"{tally['good']} close to the source, {tally['check']} to improve, {tally['none']} without a recipe.")
+    return 0
+
+
+def walk_recipe_layers(layers):
+    for layer in layers:
+        if "group" in layer:
+            yield from walk_recipe_layers(layer.get("layers") or [])
+        else:
+            yield layer
+
+
 def cmd_vectorize(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
@@ -2028,6 +2354,8 @@ def build_tree(kit: Path, layout: dict, manifest: dict, screen: str, background:
     current = None
     for item in layout["items"]:
         name = item.get("element")
+        if not name and "text" not in item:
+            continue  # a wireframe-only item, such as a "wf": "bar"
         entry = manifest["elements"].get(name) if name else None
         if entry:
             item = prepare_fill(item, entry, notes.append)
@@ -2098,18 +2426,30 @@ def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, a
     item, entry = node["item"], node["entry"]
     box = node["box"]
     children = []
+    group_effects = None
     opacity = round(item.get("opacity", 1) * 100, 1)
     if entry:
         native = (entry["width"], entry["height"])
         mapper, mode = item_mapper(item, entry, box, native)
         from_kit = node.get("kit") and not getattr(args, "redraw_kit", False)
         keep_image = from_kit or (is_art(node["element"], item) and args.art != "redraw")
-        spec = {"kind": "raster"} if keep_image else vectorize_element(kit, node["element"], entry, args)
+        # A recipe means the sprite was rebuilt from shapes on purpose, so it wins even for kit sprites,
+        # whose group still carries the user's own file name.
+        keep_art = is_art(node["element"], item) and args.art != "redraw"
+        recipe = None if keep_art else recipes.load_recipe(kit, node["element"])
+        if recipe:
+            from_kit, keep_image = False, False
+        spec = {"kind": "recipe"} if recipe else {"kind": "raster"} if keep_image else vectorize_element(kit, node["element"], entry, args)
         if from_kit:
             stats.setdefault("kit_images", []).append(node["name"])
         elif keep_image:
             stats["art_as_images"].append(node["name"])
-        if spec["kind"] == "vector":
+        if recipe:
+            stats.setdefault("recipe", []).append(node["name"])
+            built = recipes.to_photoshop(recipe, node["name"], mapper, opacity)
+            children += built["children"]
+            group_effects = built.get("effects")
+        elif spec["kind"] == "vector":
             stats["vector"].append(node["name"])
             for i, shape in enumerate(spec["shapes"]):
                 subpaths = [[[round(v, 2) for v in mapper(*point)] for point in loop] for loop in shape["subpaths"]]
@@ -2152,14 +2492,14 @@ def psd_ops(kit: Path, node: dict, layout: dict, font: str, args, stats: dict, a
     if len(children) == 1 and not entry:
         children[0]["name"] = node["name"]
         return children
-    return [{"op": "group", "name": node["name"], "children": children}]
+    return [{"op": "group", "name": node["name"], "children": children, "effects": group_effects}]
 
 
 PSD_JSX = r"""#target photoshop
 var PLAN = __PLAN__;
 function s(n) { return stringIDToTypeID(n); }
 function rgb(c) { var d = new ActionDescriptor(); d.putDouble(s("red"), c[0]); d.putDouble(s("green"), c[1]); d.putDouble(s("blue"), c[2]); return d; }
-var missingFonts = {}, placed = {}, doc, kinds = {shape: 0, text: 0, smart: 0, group: 0};
+var missingFonts = {}, placed = {}, doc, kinds = {shape: 0, text: 0, smart: 0, group: 0, live: 0, effects: 0, effects_failed: 0};
 function hasFont(n) { try { app.fonts.getByName(n); return true; } catch (e) { return false; } }
 function solidLayer(color) {
   var make = new ActionDescriptor(), ref = new ActionReference();
@@ -2189,6 +2529,231 @@ function drawPath(op, parent) {
   var layer = doc.activeLayer; layer.name = op.name;
   if (op.opacity < 100) layer.opacity = op.opacity;
   kinds.shape++;
+}
+function hex(v) { if (!v) return null; if (v.length) { if (typeof v === "string") { var n = parseInt(v.replace("#", ""), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; } return v; } return null; }
+var BLEND = {normal: "normal", multiply: "multiply", screen: "screen", overlay: "overlay", soft_light: "softLight",
+  hard_light: "hardLight", color_dodge: "colorDodge", color_burn: "colorBurn", darken: "darken", lighten: "lighten",
+  linear_dodge: "linearDodge", linear_burn: "linearBurn"};
+var DOM_BLEND = {multiply: "MULTIPLY", screen: "SCREEN", overlay: "OVERLAY", soft_light: "SOFTLIGHT", hard_light: "HARDLIGHT",
+  color_dodge: "COLORDODGE", color_burn: "COLORBURN", darken: "DARKEN", lighten: "LIGHTEN", linear_dodge: "LINEARDODGE",
+  linear_burn: "LINEARBURN", normal: "NORMAL"};
+function val(v, d) { return (v === undefined || v === null) ? d : v; }
+function gradientDesc(stops) {
+  var g = new ActionDescriptor(), colors = new ActionList(), alphas = new ActionList();
+  g.putString(s("name"), "Custom");
+  g.putEnumerated(s("gradientForm"), s("gradientForm"), s("customStops"));
+  g.putDouble(s("interfaceIconFrameDimmed"), 4096);
+  for (var i = 0; i < stops.length; i++) {
+    var c = new ActionDescriptor(), a = new ActionDescriptor(), at = Math.round(stops[i][1] / 100 * 4096);
+    c.putObject(s("color"), s("RGBColor"), rgb(hex(stops[i][0])));
+    c.putEnumerated(s("type"), s("colorStopType"), s("userStop"));
+    c.putInteger(s("location"), at); c.putInteger(s("midpoint"), 50);
+    colors.putObject(s("colorStop"), c);
+    a.putUnitDouble(s("opacity"), s("percentUnit"), val(stops[i][2], 100));
+    a.putInteger(s("location"), at); a.putInteger(s("midpoint"), 50);
+    alphas.putObject(s("transferSpec"), a);
+  }
+  g.putList(s("colors"), colors); g.putList(s("transparency"), alphas);
+  return g;
+}
+function contentType(fill) {
+  var d = new ActionDescriptor();
+  if (fill.gradient) {
+    d.putEnumerated(s("type"), s("gradientType"), s("linear"));
+    d.putUnitDouble(s("angle"), s("angleUnit"), val(fill.angle, 90));
+    d.putObject(s("gradient"), s("gradientClassEvent"), gradientDesc(fill.gradient));
+    return [s("gradientLayer"), d];
+  }
+  d.putObject(s("color"), s("RGBColor"), rgb(hex(fill.color)));
+  return [s("solidColorLayer"), d];
+}
+function makeContent(fill, shape) {
+  var make = new ActionDescriptor(), ref = new ActionReference(), layer = new ActionDescriptor(), type = contentType(fill);
+  ref.putClass(s("contentLayer")); make.putReference(s("null"), ref);
+  layer.putObject(s("type"), type[0], type[1]);
+  if (shape) layer.putObject(s("shape"), shape[0], shape[1]);
+  make.putObject(s("using"), s("contentLayer"), layer);
+  executeAction(s("make"), make, DialogModes.NO);
+}
+function roundedLoop(b, r) {
+  var pts = [], k = 8, corners = [[b[2] - r[1], b[1] + r[1], -90, r[1]], [b[2] - r[2], b[3] - r[2], 0, r[2]],
+                                   [b[0] + r[3], b[3] - r[3], 90, r[3]], [b[0] + r[0], b[1] + r[0], 180, r[0]]];
+  for (var c = 0; c < 4; c++) {
+    var cx = corners[c][0], cy = corners[c][1], a0 = corners[c][2], rad = corners[c][3];
+    for (var i = 0; i <= k; i++) {
+      var a = (a0 + 90 * i / k) * Math.PI / 180;
+      pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+      if (rad <= 0) break;
+    }
+  }
+  return pts;
+}
+function ellipseLoop(b) {
+  var pts = [], cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, rx = (b[2] - b[0]) / 2, ry = (b[3] - b[1]) / 2;
+  for (var i = 0; i < 48; i++) { var a = i / 48 * 2 * Math.PI; pts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); }
+  return pts;
+}
+function pathFromLoops(loops) {
+  var infos = [];
+  for (var i = 0; i < loops.length; i++) {
+    var points = [], loop = loops[i];
+    for (var j = 0; j < loop.length; j++) {
+      var p = new PathPointInfo(); p.kind = PointKind.CORNERPOINT;
+      p.anchor = loop[j]; p.leftDirection = loop[j]; p.rightDirection = loop[j];
+      points.push(p);
+    }
+    var sub = new SubPathInfo(); sub.closed = true; sub.operation = ShapeOperation.SHAPEXOR; sub.entireSubPath = points;
+    infos.push(sub);
+  }
+  return doc.pathItems.add("tmp_path", infos);
+}
+function drawShape(op, parent) {
+  var b = op.box, made = false;
+  if (op.shape === "rect" || op.shape === "ellipse") {
+    try {
+      var shape = new ActionDescriptor();
+      shape.putInteger(s("unitValueQuadVersion"), 1);
+      shape.putUnitDouble(s("top"), s("pixelsUnit"), b[1]); shape.putUnitDouble(s("left"), s("pixelsUnit"), b[0]);
+      shape.putUnitDouble(s("bottom"), s("pixelsUnit"), b[3]); shape.putUnitDouble(s("right"), s("pixelsUnit"), b[2]);
+      if (op.shape === "rect") {
+        var r = op.radius || [0, 0, 0, 0], lim = Math.min(b[2] - b[0], b[3] - b[1]) / 2;
+        shape.putUnitDouble(s("topLeft"), s("pixelsUnit"), Math.min(r[0], lim));
+        shape.putUnitDouble(s("topRight"), s("pixelsUnit"), Math.min(r[1], lim));
+        shape.putUnitDouble(s("bottomRight"), s("pixelsUnit"), Math.min(r[2], lim));
+        shape.putUnitDouble(s("bottomLeft"), s("pixelsUnit"), Math.min(r[3], lim));
+      }
+      makeContent(op.fill, [s(op.shape === "rect" ? "rectangle" : "ellipse"), shape]);
+      made = true; kinds.live = (kinds.live || 0) + 1;
+    } catch (liveFailed) { made = false; }
+  }
+  if (!made) {
+    var loops = op.subpaths;
+    if (op.shape === "rect") { var lim2 = Math.min(b[2] - b[0], b[3] - b[1]) / 2, rr = op.radius || [0, 0, 0, 0];
+      loops = [roundedLoop(b, [Math.min(rr[0], lim2), Math.min(rr[1], lim2), Math.min(rr[2], lim2), Math.min(rr[3], lim2)])]; }
+    if (op.shape === "ellipse") loops = [ellipseLoop(b)];
+    var path = pathFromLoops(loops);
+    path.select();
+    makeContent(op.fill, null);
+    path.remove();
+  }
+  var layer = doc.activeLayer;
+  if (parent !== doc && layer.parent !== parent) layer.move(parent, ElementPlacement.PLACEATBEGINNING);
+  layer.name = op.name;
+  setEffects(op.effects);
+  if (op.fill_opacity !== undefined && op.fill_opacity < 100) layer.fillOpacity = op.fill_opacity;
+  if (op.opacity !== undefined && op.opacity < 100) layer.opacity = op.opacity;
+  if (op.blend && op.blend !== "normal") layer.blendMode = BlendMode[DOM_BLEND[op.blend]];
+  if (op.clip) { try { layer.grouped = true; } catch (noBase) {} }
+  kinds.shape++;
+}
+function shadowDesc(fx, mode, color, opacity, angle) {
+  var d = new ActionDescriptor();
+  d.putBoolean(s("enabled"), true);
+  d.putEnumerated(s("mode"), s("blendMode"), s(BLEND[val(fx.blend, mode)]));
+  d.putObject(s("color"), s("RGBColor"), rgb(hex(val(fx.color, color))));
+  d.putUnitDouble(s("opacity"), s("percentUnit"), val(fx.opacity, opacity));
+  d.putBoolean(s("useGlobalAngle"), false);
+  d.putUnitDouble(s("localLightingAngle"), s("angleUnit"), val(fx.angle, angle));
+  d.putUnitDouble(s("distance"), s("pixelsUnit"), val(fx.distance, 4));
+  d.putUnitDouble(s("chokeMatte"), s("pixelsUnit"), val(fx.spread, 0));
+  d.putUnitDouble(s("blur"), s("pixelsUnit"), val(fx.size, 6));
+  d.putUnitDouble(s("noise"), s("percentUnit"), 0);
+  d.putBoolean(s("antiAlias"), false);
+  return d;
+}
+function glowDesc(fx, inner) {
+  var d = new ActionDescriptor();
+  d.putBoolean(s("enabled"), true);
+  d.putEnumerated(s("mode"), s("blendMode"), s(BLEND[val(fx.blend, "screen")]));
+  d.putObject(s("color"), s("RGBColor"), rgb(hex(val(fx.color, "#ffffbe"))));
+  d.putUnitDouble(s("opacity"), s("percentUnit"), val(fx.opacity, 75));
+  d.putEnumerated(s("glowTechnique"), s("matteTechnique"), s("softMatte"));
+  d.putUnitDouble(s("chokeMatte"), s("pixelsUnit"), val(fx.spread, 0));
+  d.putUnitDouble(s("blur"), s("pixelsUnit"), val(fx.size, 10));
+  d.putUnitDouble(s("noise"), s("percentUnit"), 0);
+  d.putUnitDouble(s("shadingNoise"), s("percentUnit"), 0);
+  d.putBoolean(s("antiAlias"), false);
+  d.putUnitDouble(s("inputRange"), s("percentUnit"), 50);
+  if (inner) d.putEnumerated(s("innerGlowSource"), s("innerGlowSourceType"), s("edgeGlow"));
+  return d;
+}
+function bevelDesc(fx) {
+  var d = new ActionDescriptor();
+  var tech = {smooth: "softMatte", chisel_hard: "preciseMatte", chisel_soft: "slopeLimitMatte"}[val(fx.technique, "smooth")] || "softMatte";
+  var style = {inner: "innerBevel", outer: "outerBevel", emboss: "emboss", pillow: "pillowEmboss", stroke: "strokeEmboss"}[val(fx.style, "inner")] || "innerBevel";
+  d.putBoolean(s("enabled"), true);
+  d.putEnumerated(s("highlightMode"), s("blendMode"), s(BLEND[val(fx.highlight_blend, "screen")]));
+  d.putObject(s("highlightColor"), s("RGBColor"), rgb(hex(val(fx.highlight, "#ffffff"))));
+  d.putUnitDouble(s("highlightOpacity"), s("percentUnit"), val(fx.highlight_opacity, 75));
+  d.putEnumerated(s("shadowMode"), s("blendMode"), s(BLEND[val(fx.shadow_blend, "multiply")]));
+  d.putObject(s("shadowColor"), s("RGBColor"), rgb(hex(val(fx.shadow, "#000000"))));
+  d.putUnitDouble(s("shadowOpacity"), s("percentUnit"), val(fx.shadow_opacity, 75));
+  d.putEnumerated(s("bevelTechnique"), s("bevelTechnique"), s(tech));
+  d.putEnumerated(s("bevelStyle"), s("bevelEmbossStyle"), s(style));
+  d.putBoolean(s("useGlobalAngle"), false);
+  d.putUnitDouble(s("localLightingAngle"), s("angleUnit"), val(fx.angle, 120));
+  d.putUnitDouble(s("localLightingAltitude"), s("angleUnit"), val(fx.altitude, 30));
+  d.putUnitDouble(s("strengthRatio"), s("percentUnit"), val(fx.depth, 100));
+  d.putUnitDouble(s("blur"), s("pixelsUnit"), val(fx.size, 5));
+  d.putEnumerated(s("bevelDirection"), s("bevelEmbossStampStyle"), s(val(fx.direction, "up") === "down" ? "stampOut" : "stampIn"));
+  d.putUnitDouble(s("softness"), s("pixelsUnit"), val(fx.soften, 0));
+  d.putBoolean(s("useShape"), false); d.putBoolean(s("useTexture"), false);
+  return d;
+}
+function strokeDesc(fx) {
+  var d = new ActionDescriptor();
+  d.putBoolean(s("enabled"), true);
+  d.putEnumerated(s("style"), s("frameStyle"), s({inside: "insetFrame", center: "centeredFrame"}[fx.position] || "outsetFrame"));
+  d.putEnumerated(s("mode"), s("blendMode"), s(BLEND[val(fx.blend, "normal")]));
+  d.putUnitDouble(s("opacity"), s("percentUnit"), val(fx.opacity, 100));
+  d.putUnitDouble(s("size"), s("pixelsUnit"), val(fx.size, 3));
+  if (fx.gradient) {
+    d.putEnumerated(s("paintType"), s("frameFill"), s("gradientFill"));
+    d.putObject(s("gradient"), s("gradientClassEvent"), gradientDesc(fx.gradient));
+    d.putUnitDouble(s("angle"), s("angleUnit"), val(fx.angle, 90));
+    d.putEnumerated(s("type"), s("gradientType"), s("linear"));
+  } else {
+    d.putEnumerated(s("paintType"), s("frameFill"), s("solidColor"));
+    d.putObject(s("color"), s("RGBColor"), rgb(hex(val(fx.color, "#000000"))));
+  }
+  return d;
+}
+function setEffects(fx) {
+  if (!fx) return;
+  var any = false;
+  for (var k in fx) { if (fx[k] && fx[k].enabled !== false) any = true; }
+  if (!any) return;
+  var set = new ActionDescriptor(), ref = new ActionReference(), all = new ActionDescriptor();
+  ref.putProperty(s("property"), s("layerEffects")); ref.putEnumerated(s("layer"), s("ordinal"), s("targetEnum"));
+  set.putReference(s("null"), ref);
+  all.putUnitDouble(s("scale"), s("percentUnit"), 100);
+  if (fx.drop_shadow) all.putObject(s("dropShadow"), s("dropShadow"), shadowDesc(fx.drop_shadow, "multiply", "#000000", 75, 120));
+  if (fx.inner_shadow) all.putObject(s("innerShadow"), s("innerShadow"), shadowDesc(fx.inner_shadow, "multiply", "#000000", 75, 120));
+  if (fx.outer_glow) all.putObject(s("outerGlow"), s("outerGlow"), glowDesc(fx.outer_glow, false));
+  if (fx.inner_glow) all.putObject(s("innerGlow"), s("innerGlow"), glowDesc(fx.inner_glow, true));
+  if (fx.bevel) all.putObject(s("bevelEmboss"), s("bevelEmboss"), bevelDesc(fx.bevel));
+  if (fx.color_overlay) {
+    var co = new ActionDescriptor(), c = fx.color_overlay;
+    co.putBoolean(s("enabled"), true); co.putEnumerated(s("mode"), s("blendMode"), s(BLEND[val(c.blend, "normal")]));
+    co.putUnitDouble(s("opacity"), s("percentUnit"), val(c.opacity, 100));
+    co.putObject(s("color"), s("RGBColor"), rgb(hex(val(c.color, "#ff0000"))));
+    all.putObject(s("solidFill"), s("solidFill"), co);
+  }
+  if (fx.gradient_overlay) {
+    var go = new ActionDescriptor(), g = fx.gradient_overlay;
+    go.putBoolean(s("enabled"), true); go.putEnumerated(s("mode"), s("blendMode"), s(BLEND[val(g.blend, "normal")]));
+    go.putUnitDouble(s("opacity"), s("percentUnit"), val(g.opacity, 100));
+    go.putObject(s("gradient"), s("gradientClassEvent"), gradientDesc(val(g.gradient, [["#000000", 0], ["#ffffff", 100]])));
+    go.putUnitDouble(s("angle"), s("angleUnit"), val(g.angle, 90));
+    go.putEnumerated(s("type"), s("gradientType"), s("linear"));
+    go.putBoolean(s("reverse"), false); go.putBoolean(s("dither"), false); go.putBoolean(s("align"), true);
+    go.putUnitDouble(s("scale"), s("percentUnit"), 100);
+    all.putObject(s("gradientFill"), s("gradientFill"), go);
+  }
+  if (fx.stroke) all.putObject(s("frameFX"), s("frameFX"), strokeDesc(fx.stroke));
+  set.putObject(s("to"), s("layerEffects"), all);
+  try { executeAction(s("set"), set, DialogModes.NO); kinds.effects = (kinds.effects || 0) + 1; }
+  catch (fxFailed) { kinds.effects_failed = (kinds.effects_failed || 0) + 1; }
 }
 function drawSmart(op) {
   var layer;
@@ -2264,7 +2829,11 @@ function buildOps(ops, parent) {
       doc.activeLayer = g;
       buildOps(op.children, g);
       current = parent;
+      if (op.effects) { doc.activeLayer = g; setEffects(op.effects); }
+      if (op.opacity !== undefined && op.opacity < 100) g.opacity = op.opacity;
+      if (op.blend && op.blend !== "normal") g.blendMode = BlendMode[DOM_BLEND[op.blend]];
     } else if (op.op === "path") drawPath(op, parent);
+    else if (op.op === "shape") drawShape(op, parent);
     else if (op.op === "smart") drawSmart(op);
     else if (op.op === "text") drawText(op, parent);
   }
@@ -2295,7 +2864,7 @@ try {
 }
 app.preferences.rulerUnits = savedUnits; app.displayDialogs = savedDialogs;
 var names = []; for (var key in missingFonts) names.push('"' + key + '"');
-'{"ok":' + (result.ok ? "true" : "false") + ',"error":"' + String(result.error || "").replace(/[\r\n"\\]/g, " ") + '","shape":' + kinds.shape + ',"text":' + kinds.text + ',"smart":' + kinds.smart + ',"group":' + kinds.group + ',"missing_fonts":[' + names.join(",") + "]}";
+'{"ok":' + (result.ok ? "true" : "false") + ',"error":"' + String(result.error || "").replace(/[\r\n"\\]/g, " ") + '","shape":' + kinds.shape + ',"live_shapes":' + kinds.live + ',"effects":' + kinds.effects + ',"effects_failed":' + kinds.effects_failed + ',"text":' + kinds.text + ',"smart":' + kinds.smart + ',"group":' + kinds.group + ',"missing_fonts":[' + names.join(",") + "]}";
 """
 
 
@@ -2438,7 +3007,7 @@ def cmd_psd(args) -> int:
         font_path, font_source = resolve_font(kit, layout)
         font = psd_font(font_path)
         nodes, notes = build_tree(kit, layout, manifest, screen, args.background)
-        stats = {"vector": [], "image": [], "kit_images": [], "art_as_images": [], "upscaled": [], "text": 0}
+        stats = {"vector": [], "image": [], "kit_images": [], "art_as_images": [], "upscaled": [], "text": 0, "recipe": []}
         ops = []
         background = layout.get("background")
         if isinstance(background, str) and background.startswith("#"):
@@ -2465,7 +3034,8 @@ def cmd_psd(args) -> int:
         jsx.write_text(PSD_JSX.replace("__PLAN__", json.dumps(plan, ensure_ascii=True)), encoding="utf-8")
         result = None if args.no_run else run_photoshop(jsx, args.timeout)
         entry = {"psd": psd.relative_to(kit).as_posix() if result and result.get("ok") else None,
-                 "script": jsx.relative_to(kit).as_posix(), "redrawn_as_shapes": stats["vector"],
+                 "script": jsx.relative_to(kit).as_posix(), "rebuilt_from_recipes": stats["recipe"],
+                 "redrawn_as_shapes": stats["vector"],
                  "kept_as_images": stats["image"], "kit_sprites_as_images": stats["kit_images"], "art_kept_as_images": stats["art_as_images"], "live_text": stats["text"], "font": font, "font_source": font_source,
                  "warnings": notes + stats["upscaled"]}
         if result is None:
@@ -2476,14 +3046,14 @@ def cmd_psd(args) -> int:
             status = 2
         else:
             entry["status"] = "built in Photoshop"
-            entry["layers"] = {k: result[k] for k in ("shape", "text", "smart", "group")}
+            entry["layers"] = {k: result.get(k) for k in ("shape", "live_shapes", "effects", "effects_failed", "text", "smart", "group")}
             entry["fonts_not_installed"] = result.get("missing_fonts", [])
             if check.exists():
                 flat = flatten(build_layers(kit, layout, manifest)[0], size)
                 entry["difference_from_mockup"] = round(score_shapes(np.asarray(flat.convert("RGBA")).astype(float),
                                                                        np.asarray(Image.open(check).convert("RGBA")).astype(float)), 2)
         report[screen] = entry
-        print(json.dumps({"screen": screen, **{k: (len(v) if isinstance(v, list) and k in ("redrawn_as_shapes", "kept_as_images", "art_kept_as_images") else v) for k, v in entry.items()}}, indent=1, ensure_ascii=True))
+        print(json.dumps({"screen": screen, **{k: (len(v) if isinstance(v, list) and k in ("rebuilt_from_recipes", "redrawn_as_shapes", "kept_as_images", "art_kept_as_images") else v) for k, v in entry.items()}}, indent=1, ensure_ascii=True))
     (kit / "export" / "psd_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     return status
 
@@ -2846,7 +3416,7 @@ def main() -> int:
     p.add_argument("--force", action="store_true", help="Replace existing derived files")
     p.set_defaults(func=cmd_states)
 
-    p = commands.add_parser("wireframe", help="Draw layouts as gray boxes, before or without art")
+    p = commands.add_parser("wireframe", help="Draw layouts as clean wireframes in a headless browser, before or without art")
     p.add_argument("kit")
     p.add_argument("--screen", help="One screen or variant; defaults to all layouts")
     p.set_defaults(func=cmd_wireframe)
@@ -2877,6 +3447,14 @@ def main() -> int:
     p.add_argument("--max-difference", type=float, default=6.0, help="Worse than this stays an image")
     p.add_argument("--force", action="store_true", help="Trace again")
     p.set_defaults(func=cmd_vectorize)
+
+    p = commands.add_parser("recipe", help="Rebuild sprites as named shapes with layer effects, and compare with the source")
+    p.add_argument("kit")
+    p.add_argument("--match", action="append")
+    p.add_argument("--auto", action="store_true", help="Write a first guess for sprites without a recipe")
+    p.add_argument("--force", action="store_true", help="With --auto, replace existing recipes")
+    p.add_argument("--max-difference", type=float, default=6.0, help="Above this the recipe needs work")
+    p.set_defaults(func=cmd_recipe)
 
     p = commands.add_parser("psd", help="Build an editable PSD in Photoshop: shapes, live text, smart objects, groups")
     p.add_argument("kit")

@@ -47,7 +47,11 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 .file{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px}
 .file img,.file .ph{width:56px;height:56px;object-fit:contain;border-radius:6px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
 .file .nm{font-size:13px;word-break:break-all}
-.file input{margin-top:4px;padding:6px 9px;font-size:13px}
+.file input,.file textarea{margin-top:4px;padding:6px 9px;font-size:13px}
+.file .ff{display:flex;flex-direction:column;gap:4px;min-width:0}
+.file .ff .flabel{margin:4px 0 0}
+.file.big{grid-template-columns:120px 1fr auto;align-items:start}
+.file.big img,.file.big .ph{width:120px;height:120px}
 button{font:inherit;cursor:pointer;border-radius:8px}
 .x{border:0;background:transparent;color:var(--muted);font-size:18px;padding:4px 8px}
 .x:hover{color:var(--danger)}
@@ -95,18 +99,34 @@ function textInput(value, onChange, opts = {}){
   return input;
 }
 
-/* Files: a list of {path, name, note}. accept and the question id decide where uploads go. */
-function filesWidget(list, where, hint){
+/* Fields under each file. Default: one optional note. A field with suggestions gets a dropdown list. */
+const NOTE_FIELD = [{id: "note", placeholder: "Mô tả file này (không bắt buộc)"}];
+let LISTS = 0;
+function fileFieldInputs(f, defs){
+  return defs.map(d => {
+    const input = textInput(f[d.id], v => { f[d.id] = v; }, {placeholder: d.placeholder, multiline: d.multiline});
+    const wrap = el("div", {}, d.label ? el("div", {class: "flabel", text: d.label}) : null, input);
+    if (d.suggestions && d.suggestions.length){
+      const id = "list_" + (++LISTS);
+      input.setAttribute("list", id);
+      wrap.append(el("datalist", {id}, d.suggestions.map(s => el("option", {value: s}))));
+    }
+    return wrap;
+  });
+}
+
+/* Files: a list of {path, name, note, ...}. accept and the question id decide where uploads go. */
+function filesWidget(list, where, hint, fieldDefs){
+  const defs = fieldDefs || NOTE_FIELD;
   const box = el("div", {class: "files"});
   const listBox = el("div", {class: "files"});
   const picker = el("input", {type: "file", multiple: true, class: "hidden",
     accept: ".png,.jpg,.jpeg,.webp,.psd,.zip"});
   const drop = el("div", {class: "drop", tabindex: "0", role: "button"}, hint || "Kéo thả file vào đây hoặc bấm để chọn");
   function draw(){
-    listBox.replaceChildren(...list.map((f, i) => el("div", {class: "file"},
+    listBox.replaceChildren(...list.map((f, i) => el("div", {class: fieldDefs ? "file big" : "file"},
       IMG.test(f.path) ? el("img", {src: fileUrl(f.path), alt: ""}) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
-      el("div", {}, el("div", {class: "nm", text: f.name || f.path.split("/").pop()}),
-        (() => { const n = textInput(f.note, v => { f.note = v; }, {placeholder: "Mô tả file này (không bắt buộc)"}); return n; })()),
+      el("div", {class: "ff"}, el("div", {class: "nm", text: f.name || f.path.split("/").pop()}), fileFieldInputs(f, defs)),
       el("button", {class: "x", type: "button", title: "Bỏ file", "aria-label": "Bỏ file",
         onclick: () => { list.splice(i, 1); draw(); refresh(); }}, "×"))));
   }
@@ -163,11 +183,13 @@ function visible(cond){
   return picked.some(p => (cond.in || []).includes(p));
 }
 const isShown = q => visible(q.show_if);
+/* required_if: the question is required only while that condition holds. */
+const isRequired = q => !!q.required || (!!q.required_if && visible(q.required_if));
 
 function renderQuestion(q){
   const card = el("section", {class: "card q", id: "q_" + q.id});
   const state = VALUES[q.id] = VALUES[q.id] || {};
-  card.append(el("div", {class: "qt"}, q.title, q.required ? el("span", {class: "req", text: "*"}) : null));
+  card.append(el("div", {class: "qt"}, q.title, isRequired(q) ? el("span", {class: "req", text: "*"}) : null));
   if (q.hint) card.append(el("p", {class: "hint", text: q.hint}));
   const body = el("div", {});
   card.append(body);
@@ -209,6 +231,8 @@ function renderQuestion(q){
             textInput(entry.label, v => { entry.label = v; }, {placeholder: o.placeholder}),
             el("button", {class: "x", type: "button", title: "Bỏ", "aria-label": "Bỏ", onclick: () => {
               state.value = state.value.filter(e => e !== entry); rerender(); }}, "×")));
+          if (o.describe && !(q.option_extras || {}).describe) box.append(textInput(entry.note, v => { entry.note = v; },
+            {multiline: true, placeholder: o.describe_placeholder || "Mô tả"}));
           const extra = optionExtras(q, {value: "other"}, entry);
           if (extra){ extra.style.marginLeft = "0"; box.append(extra); }
           opts.append(box);
@@ -222,6 +246,8 @@ function renderQuestion(q){
         const row = el("div", {class: "opt"}, el("label", {}, input, el("div", {text: o.label})));
         if (chosen){
           const extra = el("div", {class: "extra"}, textInput(chosen.label, v => { chosen.label = v; }, {placeholder: o.placeholder}));
+          if (o.describe) extra.append(textInput(chosen.note, v => { chosen.note = v; },
+            {multiline: true, placeholder: o.describe_placeholder || "Mô tả"}));
           const more = optionExtras(q, {value: "other"}, chosen);
           if (more) extra.append(...more.childNodes);
           row.append(extra);
@@ -242,7 +268,7 @@ function renderQuestion(q){
     body.append(fieldsWidget(defs, state.value));
   } else if (q.type === "files"){
     if (!Array.isArray(state.value)) state.value = [];
-    body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint)));
+    body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint, q.file_fields)));
   }
   if (q.describe){
     body.append(el("div", {class: "fields"}, el("div", {class: "flabel", text: q.describe_label || "Mô tả thêm"}),
@@ -270,14 +296,16 @@ function rerender(){
 function problem(q){
   const s = VALUES[q.id] || {};
   const v = s.value;
+  q = Object.assign({}, q, {required: isRequired(q)});
   const blank = x => x === undefined || x === null || (typeof x === "string" && !x.trim());
   if (q.type === "single" || q.type === "multi"){
     const entries = q.type === "multi" ? (v || []) : (v ? [v] : []);
     if (q.required && !entries.length) return true;
     for (const e of entries){
       if (e.choice === "other" && blank(e.label)) return true;
-      const opt = (q.options || []).find(o => o.value === e.choice) || {};
+      const opt = Object.assign({}, q.option_extras || {}, (q.options || []).find(o => o.value === e.choice) || {});
       if (opt.attach_required && !(e.files || []).length) return true;
+      if (opt.describe_required && blank(e.note)) return true;
       for (const f of (opt.fields || [])) if (f.required && blank((e.fields || {})[f.id])) return true;
     }
     return false;
@@ -312,7 +340,8 @@ async function submit(){
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
     app.replaceChildren(el("div", {class: "card done"}, el("h2", {text: "Đã gửi"}),
-      el("p", {class: "intro", text: "Quay lại Codex để làm tiếp. Có thể đóng tab này."})));
+      el("p", {class: "intro", text: "Codex sẽ tự làm tiếp. Có thể đóng tab này."}),
+      el("p", {class: "hint", text: "Nếu sau một lúc Codex vẫn đứng im, gõ “xong” trong Codex."})));
   } catch (e){ sendBtn.disabled = false; status("Không gửi được: " + e.message); }
 }
 

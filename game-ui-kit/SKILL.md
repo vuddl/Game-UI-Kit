@@ -78,12 +78,19 @@ py -3 <skill>/scripts/state.py ui_art/<kit> begin wireframe
 py -3 <skill>/scripts/ask.py <form> ui_art/<kit> --out briefs/<file>.json
 ```
 
-`<form>` is `setup`, `wireframe`, `full`, `mockup` or `export`, from `<skill>/forms/`. The script serves the form on localhost, opens the browser and prints `FORM_URL <url>`. Give the user that link in one line in case no browser opened. It waits until the user presses Hoàn thành, then prints one JSON line with `"status": "SUBMITTED"` and the answers, which it also saved to `--out`. The form fills in earlier answers from `--out`, so asking again lets the user edit them.
+`<form>` is `setup`, `wireframe`, `full`, `mockup`, `revise` or `export`, from `<skill>/forms/`. The script starts the form server on its own, opens the browser, prints `FORM_URL <url>`, and then waits until the user presses Hoàn thành. Then it prints one JSON line with `"status": "SUBMITTED"` and the answers, which it also saved to `--out`. The form fills in earlier answers from `--out`, so asking again lets the user edit them.
 
-- Attached files are saved in `inputs/` and listed with their paths and notes in the answers. Use those paths, and view the images before using them. Files no answer refers to any more are deleted, so nothing piles up. A ZIP is unpacked; PSD files are kept as they are.
-- If the command is cut off while waiting, use `--detach`, which opens the form and returns at once, then run `ask.py ui_art/<kit> --wait` until it prints `SUBMITTED`.
+**Stay in the turn while the form is open.** The user expects you to carry on by yourself the moment they press Hoàn thành, and once your turn ends nothing can wake you. So:
+
+- Give the user the `FORM_URL` link in one short progress line, never as your final message. Never end the turn with "fill in the form and I'll wait" or similar.
+- Keep the command running until it prints `SUBMITTED`. If the shell hands it back still running, keep polling that same session for more output. If it exits printing `WAITING`, run `ask.py ui_art/<kit> --wait` and keep waiting the same way. `still waiting for the form` lines are only a heartbeat.
+- As soon as it prints `SUBMITTED`, go straight on with the next step of the command, in the same turn.
+- Before opening a form, record the step as `waiting for form <form> --out <file>`, so a later turn knows a form is pending.
+- **If the turn ended anyway,** the user's next message, whatever it says (such as "xong"), means: first run `ask.py ui_art/<kit> --wait --timeout 0`. `SUBMITTED` gives the answer, so carry on from there; `WAITING` means the form is still open, so give the link again and keep waiting. The server keeps an answer until `--wait` collects it.
 - `TIMEOUT` means nothing was saved: ask the user whether to open the form again.
 - If the form cannot be served or opened at all, say why, then ask its questions in chat as a numbered list, as the last resort.
+
+Attached files are saved in `inputs/` and listed with their paths and notes in the answers. Use those paths, and view the images before using them. Files no answer refers to any more are deleted, so nothing piles up. A ZIP is unpacked; PSD files are kept as they are.
 
 **Short questions in between,** such as the choices after showing a result, use the `request_user_input_async` tool when it is listed: one to three questions, each with short options, the recommended one first. It returns at once, so end the turn after calling it and act on the reply when it arrives. In Plan mode, use `request_user_input` instead. Without either tool, ask in one short message with numbered options the user can answer with a number. Never ask a form's questions this way.
 
@@ -93,37 +100,46 @@ py -3 <skill>/scripts/ask.py <form> ui_art/<kit> --out briefs/<file>.json
 2. Open the `setup` form with `--out briefs/setup.json`. The script turns the answer into `size` and `orientation`; a custom size counts as portrait when it is taller than wide.
 3. Confirm in one line: kit, size, game type. Then `state.py done`.
 
-Every layout uses the setup's `size`. The game type's description in [references/catalog.md](references/catalog.md) and the gameplay feed the tone and the layouts.
+Every layout uses the setup's `size`. The game type's description in [references/catalog.md](references/catalog.md) and the gameplay feed the tone and the layouts. A game type the user typed under Lựa chọn khác has no catalog entry; its `game_type_description`, when given, takes that place.
 
 ## $wireframe
 
-Wireframes are gray boxes: no image generation and no art.
+Wireframes are clean, readable screens drawn from the layout in a headless browser: rounded cards, icons, a clear type scale, real progress bars and tab bars, and real text. No image generation and no art. `uikit.py wireframe` draws them with Edge or Chrome; it prints `WARNING NO_BROWSER` and draws plain boxes when neither is found, so tell the user.
 
 1. **Form for one screen.** Open the `wireframe` form with `--out briefs/wireframe/_new.json`. Rename the file to `briefs/wireframe/<screen>.json`, using its `screen`, replacing any earlier one.
 2. **Draw it.** Write `options` layouts as `mockups/<screen>__v1.json`, `__v2` and so on, as Wireframe layouts describes, then run `uikit.py wireframe ui_art/<kit> --screen <screen>`. View each image in `preview/wireframes/` and show them. Make the options genuinely different and say in one line how.
 3. **Ask, as a choice:**
-   - **Sửa chữa tiếp:** the user describes the changes in chat. Change the layouts, draw and show again, then ask this again.
+   - **Sửa chữa tiếp:** step 3a.
    - **Làm full màn:** step 4.
-   - **Tiếp tục:** ask "Đã xong hết các màn chưa?" with **Xong rồi** and **Làm màn tiếp**. Xong rồi goes to step 5; Làm màn tiếp goes back to step 1.
+   - **Tiếp tục:** show every wireframe made so far again, then ask, as a choice, "Có muốn làm thêm màn hình khác không?" with **Có, làm màn tiếp** and **Không, xong rồi**. Có goes back to step 1; Không goes to step 5.
+3a. **Revise.** Open the `revise` form with `--out briefs/revise.json --kind wireframes --screens <screen>`, listing every screen just shown, comma-separated. It shows each version with its image; the user ticks the ones to change, writes the change for each, and may attach images with a note each, such as "nút bo tròn như ảnh này". Its record lists `versions`, each with `layout`, `change` and `files`, plus a `common` answer for all. View every attached image, change only the ticked layouts, draw and show them again, then ask step 3 again.
 4. **All the other screens at once.** Open the `full` form with `--out briefs/wireframe/full.json`. Draw every screen it picks with the first screen's setup, its options count included, using each screen's note and reference files and the shared request and files. Then step 5.
-5. **Result.** Show every wireframe image and list their paths in `preview/wireframes/`. That is the whole result: no layout JSON is shown or delivered. If any screen's form said yes to a prototype, run `uikit.py flow ui_art/<kit> --wireframe --start <first screen>` and give the path of `demo/index.html`. Then `state.py done`.
+5. **Result.** Show every wireframe image and list their paths in `preview/wireframes/`. That is the whole result: no layout JSON is shown or delivered. If any screen's form said yes to a prototype, only now add `goto` to the buttons that change screen, run `uikit.py flow ui_art/<kit> --wireframe --start <first screen>` and give the path of `demo/index.html`. Then `state.py done`.
 
 ### Wireframe layouts
 
-Write layouts as [references/mockup.md](references/mockup.md) describes, at the setup's `size`, from the screen's function and its areas in the form: portrait Top, Middle, Bottom, or landscape Top, Left, Right, Bottom, used as `group` names. An empty area is yours to decide. List every button that changes screen with `goto`, so the prototype links work. Elements that do not exist yet are fine here. Follow the per-screen minimum in [references/prompts.md](references/prompts.md), so each screen shows what it is for.
+Write layouts as [references/mockup.md](references/mockup.md) describes, at the setup's `size`, from the screen's function and its areas in the form: portrait Top, Middle, Bottom, or landscape Top, Left, Right, Bottom, used as `group` names. An empty area is yours to decide. Elements that do not exist yet are fine here. Follow the per-screen minimum in [references/prompts.md](references/prompts.md), so each screen shows what it is for.
+
+- **Give every item its kind** with `wf`, and an `icon`, as the Wireframe items table in [references/mockup.md](references/mockup.md) lists, so it draws as a real control: currency as `pill` with `coins` or `gem`, the main action as `button_primary`, side features as `icon_button` with a short caption, a bottom `bar` with `tab` items and one `selected`, progress as `progress` with `fill`, art as `image`.
+- **Real text,** in Vietnamese unless the setup names another language: the actual title, values, captions and button labels, such as "Chơi", "12.500", "Tiến độ 3 / 8". Never a placeholder like "Button" or "Text", and never the element name.
+- **Build a hierarchy:** one large `title`, small `label` captions above sections, values in bold, secondary lines in `text`. Use a few sizes consistently.
+- **No flow text on the screen.** Never write a target such as "> shop" or "gem > shop" in a label. Add `goto` only once a screen's form said yes to a prototype, in step 5; links show only in `demo/index.html` and `preview/flow.png`, never on the wireframe.
 
 ## $mockup
 
-1. **Form for one screen.** Open the `mockup` form with `--out briefs/mockup/_new.json`, then rename it to `briefs/mockup/<screen>.json`. It answers the screen, the wireframe files, the UI kit or references or art style, the background and the options count.
+1. **Form.** Open the `mockup` form with `--out briefs/mockup/_new.json`. It answers the wireframe files, the UI kit or references or art style, the background and the options count per screen. **Each wireframe file is one screen,** listed in the record's `screens` with its `label`, `note` and `file`; this kit's wireframes come prefilled with their names.
+   - A screen with an empty `screen` has no name: view its image, name it yourself from what it shows, and say which name you gave.
+   - Two files for the same screen, such as `home__v1` and `home__v2`: ask, as a choice, which one to build from.
+   - Then rename the file to `briefs/mockup/<first screen>.json`, and take every screen in the list through the steps below.
 2. **Prepare.** Pick the role from the answers, as Choose the role says, and follow it until the sprites the screen needs exist. Before generating images, say the count and ask, as a choice, whether to go ahead.
 3. **Build the screen.** Start from the wireframe the user attached. When it is one of this kit's `preview/wireframes/` images, start from its layout in `mockups/`; otherwise view the image, set it as the layout's `reference` and measure from it in `keep` mode. Write `options` layouts as `mockups/<screen>__v1.json` and so on, replacing that screen's wireframe layouts. Give the screen the background the form chose, as Backgrounds and art describes, and render it as Mockup describes. Show `preview/mockups/<screen>__v*.png`.
-4. **Ask, as a choice:** **Sửa chữa tiếp**, **Làm full màn** or **Tiếp tục**, exactly as `$wireframe` step 3. Làm màn tiếp opens the `mockup` form again for the next screen, which asks everything again; use its new answers for that screen.
+4. **Ask, as a choice:** **Sửa chữa tiếp**, **Làm full màn** or **Tiếp tục**, exactly as `$wireframe` step 3, with `--kind mockups` for the `revise` form. **Có, làm màn tiếp** opens the `mockup` form again, which asks everything again; use its new answers for those screens.
 5. **All the other screens at once.** Open the `full` form with `--out briefs/mockup/full.json`. Build every screen it picks with the first screen's setup: its kit or style, its background choice and its options count. Use the screen's wireframe in `mockups/` when one exists, otherwise lay it out yourself, with each screen's note and reference files and the shared request.
 6. **Result.** Show every mockup image in `preview/mockups/` with its path.
 7. **Ask, as a choice, "Export không?"**
    - **Có:** step 8.
-   - **Không:** ask "Sửa tiếp không?". If yes, the user describes the changes in chat; make them, show the result as in step 6, then ask "Export không?" again. If no, `state.py done`.
-8. **Export.** Open the `export` form with `--out briefs/export.json`. Its answer gives `formats`, `psd`, `png` or both, and `layouts`, such as `home__v2`. Run, with one `--layout` per chosen layout:
+   - **Không:** ask "Sửa tiếp không?". If yes, open the `revise` form as in `$wireframe` step 3a, with `--kind mockups`; make the changes, show the result as in step 6, then ask "Export không?" again. If no, `state.py done`.
+8. **Export.** Open the `export` form with `--out briefs/export.json`, every time, since it also asks again how to treat the background. Its answer gives `formats`, `psd`, `png` or both, `layouts`, such as `home__v2`, and for a PSD `background`, `image` or `redraw`. For a PSD, first rebuild the screens' sprites as shape recipes, as Export step 3 describes. Then run, with one `--layout` per chosen layout and the form's background:
 
 ```bash
 py -3 <skill>/scripts/uikit.py psd ui_art/<kit> --layout home__v2 --background image --art image --force
@@ -148,14 +164,15 @@ Import the kit as Existing kit describes, then build the screens from it, adding
 - **Use the kit first.** For every slot on a screen, pick the kit element that fits its role best, and use the kit to the fullest. Create a new element only when no kit element suits the slot, not merely because a closer match could be drawn. Be flexible, though: the kit rarely covers every case, and a forced misfit is worse than a new element. List each new element with the slot it fills and why no kit element fits, and agree the list and image count before generating.
 - **Keep kit names.** Import kit sprites with their original file names recorded, as Existing kit describes. Never set a layout item's `name` for a kit sprite. The PSD and Unity exports then name its layer by the user's own file name, with the same name on every use, so exporting layers from the PSD maps back to one resource instead of duplicates.
 - **Every screen gets its own parts.** Check each screen against the per-screen minimum in [references/prompts.md](references/prompts.md). When the kit lacks a screen's specific parts, create them rather than filling the screen with the kit's generic panel and buttons.
-- **New elements match the kit.** Use 2 to 4 kit sprites of the same family as the style reference, put the result in the matching family folder, such as a new button in `buttons/`, and name it by the naming rule in Export step 3. Only new elements get new names.
+- **New elements match the kit.** Use 2 to 4 kit sprites of the same family as the style reference, put the result in the matching family folder, such as a new button in `buttons/`, and name it by the naming rule in Export step 2. Only new elements get new names.
 - The kit's own description in the form tells you what it is for and how to use it.
 
 ### Role B: no UI kit
 
 1. **Starting point,** from the form:
    - **References:** use every file given, with its note deciding whether it is a reference for **layout** or **art style**, art style when it does not say. Give each the matching role in the Brief.
-   - **Description:** use the colors, bright or dark theme, the chosen UI style and its description from [references/catalog.md](references/catalog.md), and the notes. Put them into the style guide and every prompt.
+   - **Description:** use the colors, bright or dark theme, the chosen UI style and its description from [references/catalog.md](references/catalog.md), and the notes. A style typed under Lựa chọn khác uses its `ui_style_description` instead of a catalog entry. Put them into the style guide and every prompt.
+   - **References with style answers:** with references, the colors, theme, UI style and notes are optional. What is left empty comes from the references; what is answered overrides them, such as a dark theme over a bright reference. Say in one line what you took from the references and what from the answers.
 2. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
 3. **Screen concepts.** Generate one concept per other screen type, in the demo's style, as Style anchor describes. Each shows what that screen needs beyond the shared parts.
 4. **Two layers of components.** Build the base set first, exactly as [references/ui_kit_standard.md](references/ui_kit_standard.md) lists it: buttons in 6 colors plus special buttons, popup, font, title frames in 6 colors, background and pattern, the common icons, coin and gem in 5 tiers, common shapes, palette, reward frames and loading bars, with the names it gives. Draw the shapes with `shapes` rather than `image_gen`. Use and reuse the base set on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
@@ -335,21 +352,33 @@ A `needs_review` 9-slice means no stretchable band was found. Regenerate that el
 
 Runs from `$mockup` step 8, on the layouts the export form chose.
 
-**1. Backgrounds and art stay images** by default: `--background image --art image` keeps image backgrounds, characters, environments and other illustration as image layers. Redraw them as shapes only when the user asks in chat, with `--background redraw` or `--art redraw`. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`.
+**Goal:** the user must be able to edit every layer, effect and image of the PSD and keep it as the source file. So UI is rebuilt from named shapes with real layer effects and live text, never pasted as a picture.
 
-**2. Name layers.** A sprite imported from the user's kit is named by its original file name, the same on every use, and stays an image layer holding the user's file, so the user's own layer export does not duplicate resources. Never override that with `name`. Pass `--redraw-kit` only if the user asks for kit sprites as shapes too. Name everything else, which is what you created, by [references/ui_kit_standard.md](references/ui_kit_standard.md): `<function>_<description>[_<color>][_<screen>]` with its prefixes, such as `btn_yellow`, `title_red`, `set_coin_2`, `icon_settings`, `bg_main`. Without a `name`, one comes from the element, so review those. Use `group` for screen regions such as `hud_top_left`.
+**1. Background and art.** The export form asks each time whether the background is redrawn or kept as one image layer; pass its answer as `--background image|redraw`. Characters, environments and other illustration stay image layers, `--art image`, unless the user asks in chat for `--art redraw`. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`.
 
-**3. PSD.** `psd` has Photoshop build `export/psd/<layout>.psd`, and opens only its own document if Photoshop is already running. It needs Photoshop on this machine. Otherwise it leaves `export/psd/<layout>.jsx`, which the user runs from File > Scripts > Browse on a machine that has it.
+**2. Name every group and layer** `(function)_(description)_(color)_(screen)`, color and screen optional, such as `icon_settings`, `button_normal_blue`, `bg_character_battle`, `frame_activity_home`, with the prefixes in [references/ui_kit_standard.md](references/ui_kit_standard.md). A sprite imported from the user's kit keeps its original file name as its group's name, the same on every use, so the user's own layer export maps back to one resource; never override that with `name`. Without a `name`, one comes from the element, so review those. Layers inside an element's group are named by what they are, such as `fill_rounded_rectangle`, `stroke_rounded_rectangle`, `highlight_top_left`. Use `group` for screen regions such as `hud_top_left`.
 
-- **Hierarchy:** anything visually inside a sprite is grouped under that sprite's group, as parent and child, at any depth.
-- **Shapes:** each UI sprite is redrawn as stacked vector shapes, and scored against its source. Those within the limit stay shapes; stretched ones keep their corners.
-- **Images:** a sprite too detailed to redraw accurately stays a smart object holding the full-size source, placed before scaling, and repeats share one smart object. A source that had to be enlarged is reported.
-- **Text:** real text layers. A font that is not installed falls back to Arial and is reported, so ask the user to install it.
+**3. Rebuild the sprites as shape recipes,** before the PSD, for every UI sprite on the chosen layouts, kit sprites included. Follow [references/recipes.md](references/recipes.md):
 
-Improve important simple sprites by hand when worthwhile, using `--match` and `--force` with `vectorize` to retry, and view the check image at `export/psd/assets/<layout>_check.png`.
+```bash
+py -3 <skill>/scripts/uikit.py recipe ui_art/<kit> --auto
+```
 
-**4. PNG.** `export --png-only` writes the flat screen to `export/png/<layout>.png`.
+   It guesses each simple sprite as named shapes, such as a fill and a border, and draws `preview/recipes/<element>.png` with the source, the rebuild and the difference. View every board and edit the recipe until it matches by eye: add the bevel, shadows, gloss, inner plates and details the sprite has, each as its own shape with real layer effects, as the user's own example does: a `fill_rounded_rectangle` with Bevel & Emboss, a `stroke` group with Bevel & Emboss holding a `stroke_rounded_rectangle` whose fill is 0 and which carries a Stroke, and a `highlight_top_left` gloss. Run `recipe --match "<element>"` again after each edit. Write recipes by hand for icons, badges and ribbons that shapes and paths can draw. Only real illustration, such as characters and scenery, stays an image. Spend the effort on what the user will edit most: buttons, panels, frames, bars and tabs.
 
-**5. Unity.** `unity` writes `export/unity/<layout>.json` with the same hierarchy, and each node's anchor, position relative to its parent, size, sprite, 9-slice, text, font and links. It does not build anything in Unity, and anchors are inferred from position, so say they may need adjusting.
+**4. PSD.** `psd` has Photoshop build `export/psd/<layout>.psd`, and opens only its own document if Photoshop is already running. It needs Photoshop on this machine. Otherwise it leaves `export/psd/<layout>.jsx`, which the user runs from File > Scripts > Browse on a machine that has it.
 
-**6. Report honestly** from `export/psd_report.json`: how many sprites are shapes, how many stayed images and why, live text count, missing fonts, and the difference from the mockup. Shapes are traced flat colors, so soft gradients become bands, and they are not a designer's hand-built vectors. Never call the file fully vector if anything stayed an image. Finish with the paths of every PSD, PNG and Unity file, the number of images generated, and every remaining warning. State clearly that mockups and PSD files are not screens built in the engine.
+- **Hierarchy:** anything visually inside a sprite is grouped under that sprite's group, as parent and child, at any depth: a popup holds its panel, the panel holds its button, the button holds its own shapes, icon and text.
+- **Recipes:** a sprite with a recipe becomes its group of live shapes, rectangles and ellipses whose size and corner radius stay editable, with gradient fills, fill opacity, blend modes, clipping masks and layer styles: stroke, bevel and emboss, drop and inner shadow, glows, color and gradient overlay. Stretched and 9-sliced sprites keep their corners.
+- **Without a recipe:** a sprite is traced into flat-color shapes when that scores close enough, else it stays an image. Report every such sprite: it is not fully editable.
+- **Images:** art stays a smart object holding the full-size source, placed before scaling, so it can be scaled up again without loss, and repeats share one smart object. A source that had to be enlarged is reported.
+- **Text:** real text layers, never pictures of text. A font that is not installed falls back to Arial and is reported, so ask the user to install it.
+- **Patterns:** Photoshop patterns cannot be made by script; draw such surfaces with shapes or keep them as a clipped image layer, and say so.
+
+View the check image at `export/psd/assets/<layout>_check.png`, which Photoshop saved from the file, and compare it with the mockup.
+
+**5. PNG.** `export --png-only` writes the flat screen to `export/png/<layout>.png`.
+
+**6. Unity.** `unity` writes `export/unity/<layout>.json` with the same hierarchy, and each node's anchor, position relative to its parent, size, sprite, 9-slice, text, font and links. It does not build anything in Unity, and anchors are inferred from position, so say they may need adjusting.
+
+**7. Report honestly** from `export/psd_report.json`: how many sprites were rebuilt from recipes, how many were traced, how many stayed images and why, the live shape, layer effect and live text counts, any `effects_failed`, missing fonts, and the difference from the mockup. Traced sprites are flat-color bands, not built shapes, so name them. Never call the file fully editable if anything stayed an image. Finish with the paths of every PSD, PNG and Unity file, the number of images generated, and every remaining warning. State clearly that mockups and PSD files are not screens built in the engine.

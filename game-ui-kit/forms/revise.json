@@ -1,0 +1,25 @@
+{
+  "id": "revise",
+  "title": "Sửa chữa tiếp",
+  "intro": "Chọn các bản cần sửa. Mỗi bản ghi ý sửa và có thể gắn ảnh minh họa.",
+  "questions": [
+    {
+      "id": "versions",
+      "type": "multi",
+      "title": "Bản nào cần sửa?",
+      "hint": "Chọn được nhiều bản.",
+      "required": true,
+      "options_from": "kit:previews",
+      "option_extras": {"describe": true, "describe_placeholder": "Muốn sửa gì ở bản này?", "describe_required": true,
+                        "attach": true, "attach_hint": "Gắn ảnh minh họa ý sửa: kéo thả hoặc bấm để chọn. Mỗi ảnh có ô ghi chú."}
+    },
+    {
+      "id": "common",
+      "type": "text",
+      "title": "Ý sửa chung cho tất cả các bản",
+      "hint": "Không bắt buộc. Có thể gắn ảnh.",
+      "multiline": true,
+      "attach": true
+    }
+  ]
+}
