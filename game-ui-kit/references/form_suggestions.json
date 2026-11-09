@@ -1,0 +1,1560 @@
+{
+  "source": "https://docs.google.com/spreadsheets/d/1zZy5cT3bZbI8JQrbhKSgvPdclbgrJoAIcFF5YrATkug/edit",
+  "game_types": [
+    {
+      "label": "Puzzle",
+      "text": "Game giải đố, yêu cầu người chơi quan sát, suy luận hoặc sắp xếp để hoàn thành mục tiêu. Cơ chế thường gặp gồm ghép hình, nối màu, match-3, tìm đường hoặc giải bài toán logic."
+    },
+    {
+      "label": "Hypercasual / Hybrid casual",
+      "text": "Có cơ chế rất đơn giản, dễ hiểu ngay và lượt chơi ngắn. Hybrid casual giữ gameplay dễ tiếp cận nhưng bổ sung nâng cấp, sưu tập, nhiệm vụ hoặc phát triển nhân vật để tạo chiều sâu và động lực chơi lâu dài."
+    },
+    {
+      "label": "Cozy / Collection",
+      "text": "Game tạo cảm giác thư giãn, ít áp lực, thường xoay quanh chăm sóc, khám phá nhẹ nhàng và sưu tập. Người chơi tích lũy nhân vật, thú cưng hoặc đồ vật, rồi xây dựng một không gian mang dấu ấn cá nhân. Cozy mô tả cảm xúc; collection mô tả hoạt động sưu tập."
+    },
+    {
+      "label": "Dressup",
+      "text": "Game phối trang phục, kiểu tóc, phụ kiện và trang điểm cho nhân vật. Mục tiêu có thể là thể hiện phong cách cá nhân, hoàn thành chủ đề thời trang hoặc thi đấu chấm điểm."
+    },
+    {
+      "label": "Racing / Sport",
+      "text": "Racing tập trung vào điều khiển phương tiện, tốc độ và vượt đối thủ. Sport mô phỏng các môn thể thao hoặc quản lý đội thi đấu, nhấn mạnh kỹ năng, chiến thuật và thành tích."
+    },
+    {
+      "label": "Pixel",
+      "text": "Nhóm game có đồ họa tạo từ các điểm ảnh rõ nét, thường gợi cảm giác retro. Pixel là phong cách hình ảnh, có thể xuất hiện trong game nhập vai, nông trại, giải đố, hành động hoặc sinh tồn."
+    },
+    {
+      "label": "Sandbox",
+      "text": "Nhóm game cho phép khám phá, xây dựng, tương tác và sáng tạo trong không gian 3D."
+    },
+    {
+      "label": "Action RPG",
+      "text": "Game nhập vai kết hợp chiến đấu thời gian thực. Người chơi trực tiếp điều khiển di chuyển, tấn công, né tránh và kỹ năng, đồng thời phát triển nhân vật qua cấp độ, trang bị và hệ thống nâng cấp."
+    },
+    {
+      "label": "Tycoon",
+      "text": "Game quản lý và phát triển một hoạt động kinh doanh hoặc hệ thống sản xuất. Người chơi đầu tư, mở rộng cơ sở, nâng cấp nhân sự và tối ưu vận hành để tăng doanh thu."
+    },
+    {
+      "label": "Runner",
+      "text": "Game tập trung vào di chuyển liên tục trên đường chạy, vượt chướng ngại vật và thu thập vật phẩm. Người chơi thường vuốt hoặc chạm để đổi làn, nhảy, trượt; mục tiêu là đi xa hoặc hoàn thành màn."
+    },
+    {
+      "label": "Merge / Decor",
+      "text": "Merge yêu cầu kết hợp các vật phẩm để tạo ra vật phẩm cấp cao hơn. Decor tập trung vào trang trí và cải tạo không gian; hai cơ chế thường được kết hợp để người chơi dùng phần thưởng từ merge mở khóa nội thất hoặc khu vực mới."
+    },
+    {
+      "label": "Farm / Building",
+      "text": "Farm xoay quanh trồng trọt, chăn nuôi, chế biến và giao hàng. Building tập trung vào xây dựng, bố trí và phát triển công trình hoặc khu dân cư; cả hai thường có quản lý tài nguyên và tiến trình mở rộng."
+    },
+    {
+      "label": "Survival",
+      "text": "Game hành động dễ điều khiển, người chơi chủ yếu di chuyển để né và tiêu diệt số lượng lớn quái; vũ khí thường tự động tấn công. Thu thập EXP rơi từ quái để lên cấp, chọn kỹ năng hoặc nâng cấp, tạo bộ kỹ năng mạnh dần trong mỗi lượt chơi. Quái xuất hiện theo đợt hoặc tăng mật độ theo thời gian; màn chơi có thể giới hạn thời gian hoặc endless."
+    },
+    {
+      "label": "Idle",
+      "text": "Game cho phép tài nguyên hoặc tiến trình tiếp tục tăng khi người chơi ít tương tác; một số game còn có phần thưởng ngoại tuyến. Hoạt động chính là chọn nâng cấp, phân bổ tài nguyên và tối ưu tốc độ phát triển."
+    },
+    {
+      "label": "Card",
+      "text": "Game dùng lá bài làm công cụ hành động hoặc đơn vị chiến thuật. Người chơi có thể xây bộ bài, kết hợp hiệu ứng và quản lý lượt chơi; nhóm này bao gồm cả bài truyền thống, đấu bài sưu tập và roguelike xây bộ bài."
+    },
+    {
+      "label": "Anime",
+      "text": "Nhóm game có nhân vật và hình ảnh lấy cảm hứng từ hoạt hình Nhật Bản, thường nổi bật ở thiết kế nhân vật, biểu cảm và hoạt cảnh kỹ năng. Anime là phong cách mỹ thuật, có thể kết hợp với RPG, hành động, chiến thuật hoặc visual novel."
+    },
+    {
+      "label": "Technology",
+      "text": "Nhóm game lấy công nghệ làm chủ đề, chẳng hạn robot, máy móc, AI, thiết bị tương lai hoặc không gian sci-fi. Đây là chủ đề, có thể áp dụng cho game chiến đấu, quản lý, xây dựng, giải đố hoặc mô phỏng."
+    }
+  ],
+  "art_styles": [
+    {
+      "label": "Pixel",
+      "text": "UI được tạo bằng pixel có cạnh rõ, khung vuông hoặc góc bậc thang, icon dạng sprite và bảng màu giới hạn. Font bitmap, viền tương phản và đổ bóng theo từng pixel tạo cảm giác retro."
+    },
+    {
+      "label": "Voxel / Blocky / Utility",
+      "text": "Hình học vuông vức, panel chữ nhật, inventory dạng lưới và icon trực tiếp. Thiết kế ưu tiên công năng, tính module và thao tác rõ ràng, thường ít trang trí. Chất blocky/pixel rõ, giao diện nền tảng khá sạch."
+    },
+    {
+      "label": "3D Soft Clean",
+      "text": "Nút, icon và panel có cảm giác mềm, tròn, nổi nhẹ như đồ chơi nhựa. Dùng gradient dịu, highlight và bóng mềm để tạo chiều sâu; ít texture, màu sáng và bố cục dễ đọc. Điểm chính là khối 3D được làm sạch và đơn giản, tránh chi tiết vật liệu phức tạp."
+    },
+    {
+      "label": "3D Low-poly / Minimal Flat",
+      "text": "UI dùng hình khối cơ bản, màu phẳng, icon đơn giản và ít hiệu ứng bề mặt. Thông tin được chia thành các nút hoặc thẻ dễ nhận biết, phù hợp thao tác nhanh. Có thể gọi tên style là Simple Casual / Flat UI"
+    },
+    {
+      "label": "Casual / Playful / Bold Cartoon",
+      "text": "Hình khối phóng đại, nút lớn, màu tươi, font đậm và icon giàu cá tính. Thường dùng viền rõ, bóng cứng hoặc độ nổi vừa phải để tăng khả năng nhận diện. Playful thiên về vui nhộn, mềm mại; Bold thiên về mảng màu mạnh, tương phản cao và hình khối chắc."
+    },
+    {
+      "label": "Outmeta Dark Theme",
+      "text": "UI tối mang cảm giác game mobile đời cũ: gradient rõ, nút nổi, viền kim loại, bóng nặng và texture bề mặt. Chữ đậm, bảng chỉ số và nhiều khung tạo cảm giác cơ khí, thực dụng."
+    },
+    {
+      "label": "Chunky Fantasy",
+      "text": "Mọi thành phần từ nút bấm (button), khung viền (panel) cho đến icon đều được bao bọc bởi một đường outline rất dày.\nTác dụng: Tách biệt hoàn toàn phần UI ra khỏi phần đồ họa nền của game, giúp người chơi không bị hoa mắt và dễ dàng tương tác. Đường viền này thường có màu tối (nâu đậm, xanh đen) thay vì màu đen thuần để giữ độ mềm mại.\nGóc nhọn hầu như bị triệt tiêu. Các khối UI sử dụng các góc bo viên lớn (High Corner Radius), hình viên thuốc (Pill shape) hoặc hình quả trứng. Tuy là UI 2D nhưng các nút bấm luôn tạo cảm giác có độ dày thực tế. Các nhà thiết kế thường thêm một lớp đổ bóng đổ phía dưới nút (Drop shadow) và một đường highlight sáng ở rìa trên (Inner glow/Bevel)."
+    },
+    {
+      "label": "Soft Casual",
+      "text": "Panel bo tròn, nút mềm, màu thân thiện, font tròn và icon vật phẩm dễ nhận biết. Có gradient, highlight và bóng vừa phải để tạo độ nổi; popup phần thưởng thường vui mắt."
+    },
+    {
+      "label": "2D Hand-painted / Cozy / Pastel",
+      "text": "Icon và khung có cảm giác minh họa thủ công, nét mềm hoặc hơi không đều; màu nhẹ, độ tương phản dịu và ít bóng nặng. Trang trí như sổ tay, sticker hoặc đồ dùng đời thường tạo cảm giác gần gũi."
+    },
+    {
+      "label": "Robot / Technology",
+      "text": "Panel dạng module, khung vuông hoặc góc vát, font gọn và icon kỹ thuật. Thường phối nền xanh đậm/xám với màu nhấn sáng, dùng thanh chỉ số và thẻ trang bị để thể hiện nâng cấp."
+    },
+    {
+      "label": "Minimalism / Clean",
+      "text": "Giữ lại các thành phần cần thiết, dùng khoảng trống và căn chỉnh để tổ chức thông tin. Icon hình học, font dễ đọc, ít màu nhấn, ít viền và hiệu ứng. Cảm giác tập trung, nhẹ và yên tĩnh. Đa phần sử dụng cho game hyper casual."
+    },
+    {
+      "label": "Rustic Casual",
+      "text": "UI gợi cảm giác nông trại và đời sống thông qua gỗ, bảng hiệu, giấy, giỏ và dụng cụ được cách điệu. Màu ấm, hình khối mềm, icon nông sản rõ và dễ hiểu."
+    },
+    {
+      "label": "Anime",
+      "text": "UI làm nền cho hình ảnh nhân vật: panel gọn, icon tinh tế, khung tương đối mảnh và thẻ nhân vật nổi bật. Màu, họa tiết và typography bám theo thế giới của game."
+    },
+    {
+      "label": "Modern Minimal",
+      "text": "Bố cục theo grid, panel phẳng hoặc trong suốt, typography nổi bật, icon tối giản và màu nhấn có kiểm soát. Phân cấp bằng kích thước chữ, khoảng cách và mảng màu thay cho khung trang trí. Cảm giác sạch, chuyên nghiệp và năng động"
+    },
+    {
+      "label": "Fantasy",
+      "text": "Khung và icon lấy cảm hứng từ kim loại, đá quý, ma thuật và huy hiệu. Nền tối giúp viền vàng, ánh sáng và icon kỹ năng nổi bật; vật phẩm thường có màu phân cấp. Có cảm giác anh hùng, quyền lực và cao cấp, với mức độ trang trí thay đổi theo màn hình."
+    }
+  ],
+  "screens": [
+    {
+      "label": "Home",
+      "regions": [
+        {
+          "label": "Top Bar / Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Avatar, tên người chơi, cấp và EXP; tiền, gem, năng lượng; nút thêm tài nguyên; Settings"
+        },
+        {
+          "label": "Offer Rail / Monetization Panel",
+          "position": "Cột trái",
+          "areas": [
+            "left"
+          ],
+          "text": "Starter Pack, Limited Offer, No Ads, gói sự kiện; badge giảm giá; bộ đếm thời gian"
+        },
+        {
+          "label": "Activity Rail / Engagement Panel",
+          "position": "Cột phải",
+          "areas": [
+            "right"
+          ],
+          "text": "Daily Rewards, Spin, Mission, Mail, Event, Battle Pass; chấm thông báo và số phần thưởng chờ nhận"
+        },
+        {
+          "label": "Main Content Area",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nhân vật đại diện, hình nền hoặc bản đồ; chapter/màn hiện tại; nội dung nổi bật"
+        },
+        {
+          "label": "Primary Action Area",
+          "position": "Trung tâm phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Nút Play / Battle; số màn; năng lượng cần dùng; lựa chọn chế độ"
+        },
+        {
+          "label": "Bottom Navigation",
+          "position": "Sát đáy",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Home, Shop, Inventory, Equipment, Characters; icon và trạng thái tab đang chọn"
+        }
+      ]
+    },
+    {
+      "label": "Inventory",
+      "regions": [
+        {
+          "label": "Screen Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề Inventory, nút Back; số ô đã dùng/tổng số ô"
+        },
+        {
+          "label": "Category Tabs / Filter Bar",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Tab vật phẩm, trang bị, nguyên liệu; lọc độ hiếm; sắp xếp theo cấp hoặc loại"
+        },
+        {
+          "label": "Item Grid",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Ô vật phẩm; icon, số lượng, độ hiếm; dấu New; trạng thái đang chọn hoặc bị khóa"
+        },
+        {
+          "label": "Item Detail Panel",
+          "position": "Bên cạnh hoặc dưới lưới",
+          "areas": [
+            "left",
+            "right"
+          ],
+          "text": "Tên, ảnh lớn, mô tả, công dụng, giá bán; nguồn nhận vật phẩm"
+        },
+        {
+          "label": "Item Action Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Use, Equip, Sell; chọn số lượng; trạng thái nút khi không thể thao tác"
+        }
+      ]
+    },
+    {
+      "label": "Equipment",
+      "regions": [
+        {
+          "label": "Screen Header / Resource Bar",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; tiền và nguyên liệu nâng cấp"
+        },
+        {
+          "label": "Character Preview / Equipment Slots",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình nhân vật; ô vũ khí, áo, mũ, phụ kiện; dấu ô trống; trang bị đang mặc"
+        },
+        {
+          "label": "Stat Summary",
+          "position": "Dưới nhân vật",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tổng sức mạnh: ATK, HP, DEF; mức tăng/giảm khi đổi trang bị"
+        },
+        {
+          "label": "Equipment Grid",
+          "position": "Trung tâm phía dưới",
+          "areas": [
+            "middle"
+          ],
+          "text": "Danh sách trang bị; cấp, độ hiếm; nhãn Equipped; bộ lọc loại trang bị"
+        },
+        {
+          "label": "Equipment Detail Panel",
+          "position": "Vùng chi tiết",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tên, chỉ số, hiệu ứng, cấp nâng cấp; chi phí và chỉ số sau nâng cấp"
+        },
+        {
+          "label": "Equipment Action Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Equip, Unequip, Upgrade; cảnh báo thiếu nguyên liệu"
+        }
+      ]
+    },
+    {
+      "label": "Daily Login",
+      "regions": [
+        {
+          "label": "Modal Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề Daily Rewards; nút Close; chu kỳ điểm danh"
+        },
+        {
+          "label": "Login Progress",
+          "position": "Dưới tiêu đề",
+          "areas": [
+            "top"
+          ],
+          "text": "Ngày hiện tại, số ngày đã nhận; thời gian đến lần nhận tiếp theo"
+        },
+        {
+          "label": "Reward Calendar / Reward Grid",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Thẻ từng ngày; icon và số lượng thưởng; trạng thái Claimed, Available, Locked"
+        },
+        {
+          "label": "Featured Reward",
+          "position": "Vùng nổi bật",
+          "areas": [
+            "middle"
+          ],
+          "text": "Phần thưởng ngày cuối hoặc mốc lớn; khung và hiệu ứng nhấn mạnh"
+        },
+        {
+          "label": "Claim Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Claim; Claim x2 qua quảng cáo nếu có; trạng thái đã nhận"
+        }
+      ]
+    },
+    {
+      "label": "Mission",
+      "regions": [
+        {
+          "label": "Screen Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back/Close; thời gian reset"
+        },
+        {
+          "label": "Mission Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Daily, Weekly, Achievement; badge nhiệm vụ đã hoàn thành"
+        },
+        {
+          "label": "Milestone Reward Track",
+          "position": "Đầu vùng nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Điểm hoạt động; thanh tiến độ; các rương thưởng theo mốc"
+        },
+        {
+          "label": "Mission List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Icon, tên, mô tả; tiến độ hiện tại/mục tiêu; icon phần thưởng"
+        },
+        {
+          "label": "Mission Action",
+          "position": "Trong mỗi dòng",
+          "areas": [
+            "middle"
+          ],
+          "text": "Go, Claim hoặc dấu Claimed"
+        },
+        {
+          "label": "Bulk Claim Area",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Claim All; số nhiệm vụ có thể nhận"
+        }
+      ]
+    },
+    {
+      "label": "Shop",
+      "regions": [
+        {
+          "label": "Screen Header / Currency Bar",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; tiền và gem; nút nạp thêm"
+        },
+        {
+          "label": "Shop Category Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Featured, Packs, Gems, Coins, Items"
+        },
+        {
+          "label": "Featured Offer Banner",
+          "position": "Đầu nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Gói nổi bật; hình quảng bá; ưu đãi và thời hạn"
+        },
+        {
+          "label": "Product Grid / Product List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Thẻ sản phẩm; ảnh, số lượng, giá; nhãn Sale, Best Value; giới hạn mua"
+        },
+        {
+          "label": "Purchase Action",
+          "position": "Trong mỗi thẻ",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nút mua bằng tiền game hoặc tiền thật; trạng thái Sold Out"
+        },
+        {
+          "label": "Purchase Support Area",
+          "position": "Cuối nội dung",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Restore Purchases đối với IAP; thông tin điều kiện gói nếu cần"
+        }
+      ]
+    },
+    {
+      "label": "Loading",
+      "regions": [
+        {
+          "label": "Loading Background",
+          "position": "Toàn màn hình",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình nền hoặc minh họa đại diện game"
+        },
+        {
+          "label": "Brand Area",
+          "position": "Phía trên / Trung tâm",
+          "areas": [
+            "top"
+          ],
+          "text": "Logo, tên game"
+        },
+        {
+          "label": "Tip Area",
+          "position": "Trung tâm phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Mẹo chơi, giới thiệu nhân vật hoặc tính năng"
+        },
+        {
+          "label": "Loading Progress",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Thanh tiến độ, phần trăm; trạng thái tải dữ liệu"
+        },
+        {
+          "label": "Connection Feedback",
+          "position": "Khi gặp sự cố",
+          "areas": [
+            "middle"
+          ],
+          "text": "Thông báo lỗi kết nối; nút Retry"
+        }
+      ]
+    },
+    {
+      "label": "Level Up",
+      "regions": [
+        {
+          "label": "Celebration Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề Level Up; hiệu ứng ánh sáng hoặc confetti"
+        },
+        {
+          "label": "Level Display",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Huy hiệu cấp; cấp cũ → cấp mới"
+        },
+        {
+          "label": "Upgrade Summary",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Chỉ số tăng; năng lượng được hồi; tính năng hoặc vật phẩm mới mở khóa"
+        },
+        {
+          "label": "Reward Row",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Icon phần thưởng và số lượng"
+        },
+        {
+          "label": "Confirmation Action",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Continue / Claim"
+        }
+      ]
+    },
+    {
+      "label": "Ranking",
+      "regions": [
+        {
+          "label": "Screen Header / Season Info",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; tên mùa, thời gian còn lại; nút xem luật"
+        },
+        {
+          "label": "Leaderboard Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Global, Friends, Clan hoặc loại điểm xếp hạng"
+        },
+        {
+          "label": "Top Players Podium",
+          "position": "Đầu nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Top 3; avatar, tên, điểm, huy hiệu"
+        },
+        {
+          "label": "Leaderboard List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hạng, avatar, tên, điểm; đánh dấu người chơi hiện tại"
+        },
+        {
+          "label": "My Rank Panel",
+          "position": "Phía dưới cố định",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Hạng và điểm của bản thân; khoảng cách đến mốc tiếp theo"
+        },
+        {
+          "label": "Season Reward Entry",
+          "position": "Cạnh thông tin mùa",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nút xem phần thưởng theo hạng"
+        }
+      ]
+    },
+    {
+      "label": "Clan",
+      "regions": [
+        {
+          "label": "Clan Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tên, huy hiệu, cấp clan; số thành viên; Settings"
+        },
+        {
+          "label": "Clan Navigation Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Overview, Members, Missions, Chat"
+        },
+        {
+          "label": "Clan Overview Panel",
+          "position": "Trung tâm — Tổng quan",
+          "areas": [
+            "middle"
+          ],
+          "text": "Mô tả, thông báo, EXP clan; tiến độ mục tiêu chung"
+        },
+        {
+          "label": "Member List",
+          "position": "Trung tâm — Thành viên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Avatar, tên, vai trò, trạng thái online, điểm đóng góp"
+        },
+        {
+          "label": "Clan Mission Panel",
+          "position": "Trung tâm — Nhiệm vụ",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nhiệm vụ chung; tiến độ, phần thưởng"
+        },
+        {
+          "label": "Clan Action Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Donate, Invite, Join / Request tùy trạng thái"
+        },
+        {
+          "label": "Clan Discovery Panel",
+          "position": "Khi chưa có clan",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tìm kiếm clan; danh sách đề xuất; nút Create Clan"
+        }
+      ]
+    },
+    {
+      "label": "Spin",
+      "regions": [
+        {
+          "label": "Screen Header / Ticket Bar",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Close; số vé hoặc lượt quay"
+        },
+        {
+          "label": "Spin Wheel",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Các ô thưởng; icon và số lượng; kim chỉ; hiệu ứng quay"
+        },
+        {
+          "label": "Reward Info / History",
+          "position": "Bên cạnh vòng quay",
+          "areas": [
+            "left",
+            "right"
+          ],
+          "text": "Thông tin phần thưởng; lịch sử nhận nếu cần"
+        },
+        {
+          "label": "Spin Status",
+          "position": "Dưới vòng quay",
+          "areas": [
+            "middle"
+          ],
+          "text": "Lượt miễn phí; thời gian hồi; chi phí lượt tiếp theo"
+        },
+        {
+          "label": "Spin Action Area",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Spin, Spin x10, Watch Ad nếu có"
+        },
+        {
+          "label": "Spin Result Popup",
+          "position": "Lớp phủ sau quay",
+          "areas": [
+            "middle"
+          ],
+          "text": "Phần thưởng vừa trúng; nút nhận hoặc quay tiếp"
+        }
+      ]
+    },
+    {
+      "label": "Stats",
+      "regions": [
+        {
+          "label": "Screen Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; nút giải thích chỉ số"
+        },
+        {
+          "label": "Stats Category Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Combat, Progress, Records tùy game"
+        },
+        {
+          "label": "Summary Panel",
+          "position": "Đầu nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tổng sức mạnh hoặc thành tích nổi bật"
+        },
+        {
+          "label": "Stat List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tên chỉ số, icon, giá trị; phần cộng từ trang bị hoặc nâng cấp"
+        },
+        {
+          "label": "Record Panel",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Số trận, tỷ lệ thắng, màn cao nhất, điểm cao nhất"
+        },
+        {
+          "label": "Stat Tooltip",
+          "position": "Khi chọn chỉ số",
+          "areas": [
+            "middle"
+          ],
+          "text": "Ý nghĩa, cách tính hoặc nguồn tăng chỉ số"
+        }
+      ]
+    },
+    {
+      "label": "No Ads Popup",
+      "regions": [
+        {
+          "label": "Offer Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề No Ads; Close"
+        },
+        {
+          "label": "Offer Illustration",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình minh họa quyền lợi"
+        },
+        {
+          "label": "Benefit List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Loại quảng cáo được loại bỏ; quyền lợi bổ sung; thời hạn áp dụng"
+        },
+        {
+          "label": "Offer Clarification",
+          "position": "Dưới quyền lợi",
+          "areas": [
+            "middle"
+          ],
+          "text": "Giải thích cách xử lý quảng cáo nhận thưởng nếu vẫn có"
+        },
+        {
+          "label": "Purchase Action",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Nút mua kèm giá; Restore Purchases"
+        }
+      ]
+    },
+    {
+      "label": "Ingame",
+      "regions": [
+        {
+          "label": "Gameplay HUD",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Điểm, mục tiêu, lượt hoặc thời gian; số màn; Pause"
+        },
+        {
+          "label": "Objective / Progress Panel",
+          "position": "Ngay dưới HUD",
+          "areas": [
+            "top"
+          ],
+          "text": "Icon mục tiêu; số lượng còn thiếu; thanh tiến độ hoặc mốc sao"
+        },
+        {
+          "label": "Playfield / Gameplay Area",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Bàn chơi, nhân vật, chướng ngại; đối tượng có thể tương tác"
+        },
+        {
+          "label": "Contextual Controls",
+          "position": "Hai bên nếu cần",
+          "areas": [
+            "left",
+            "right"
+          ],
+          "text": "Kỹ năng, mục tiêu phụ hoặc điều khiển theo cơ chế game"
+        },
+        {
+          "label": "Booster Bar / Control Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Booster; số lượng; trạng thái chọn hoặc cooldown"
+        },
+        {
+          "label": "Gameplay Feedback Layer",
+          "position": "Lớp phủ",
+          "areas": [
+            "middle"
+          ],
+          "text": "Điểm nổi, combo, cảnh báo hết lượt; hiệu ứng hoàn thành mục tiêu"
+        }
+      ]
+    },
+    {
+      "label": "Victory / Defeat",
+      "regions": [
+        {
+          "label": "Result Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Victory hoặc Defeat; hình và hiệu ứng theo kết quả"
+        },
+        {
+          "label": "Performance Summary",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Số màn, điểm, sao; thời gian hoặc mục tiêu đã hoàn thành"
+        },
+        {
+          "label": "Reward Panel / Failure Summary",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Khi thắng: phần thưởng. Khi thua: mục tiêu còn thiếu hoặc lý do thất bại"
+        },
+        {
+          "label": "Bonus / Continue Offer",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nhân thưởng qua quảng cáo; mua thêm lượt hoặc hồi sinh nếu có"
+        },
+        {
+          "label": "Result Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Thắng: Next. Thua: Retry / Continue. Nút phụ Home"
+        }
+      ]
+    },
+    {
+      "label": "Paused",
+      "regions": [
+        {
+          "label": "Modal Backdrop",
+          "position": "Phủ toàn màn",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nền tối, chặn thao tác với màn chơi"
+        },
+        {
+          "label": "Pause Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề Paused; Close"
+        },
+        {
+          "label": "Current Stage Info",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Màn hiện tại: mục tiêu hoặc tiến độ"
+        },
+        {
+          "label": "Quick Settings",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Music, Sound, Vibration"
+        },
+        {
+          "label": "Pause Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Resume, Restart, Home / Quit"
+        }
+      ]
+    },
+    {
+      "label": "Receive Rewards",
+      "regions": [
+        {
+          "label": "Reward Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề: nguồn thưởng như nhiệm vụ hoặc sự kiện"
+        },
+        {
+          "label": "Reward Grid / Reward Showcase",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Icon, số lượng, độ hiếm; tên vật phẩm khi cần"
+        },
+        {
+          "label": "Reward Effects",
+          "position": "Bao quanh vật phẩm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Ánh sáng, sparkle; hiệu ứng xuất hiện lần lượt"
+        },
+        {
+          "label": "Bonus Reward Option",
+          "position": "Dưới danh sách",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tùy chọn nhân thưởng nếu áp dụng"
+        },
+        {
+          "label": "Claim Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Claim / Confirm; hướng dẫn chạm để tiếp tục"
+        }
+      ]
+    },
+    {
+      "label": "Congratulation",
+      "regions": [
+        {
+          "label": "Celebration Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề Congratulations"
+        },
+        {
+          "label": "Achievement Showcase",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình thành tựu, nhân vật hoặc tính năng vừa mở khóa"
+        },
+        {
+          "label": "Milestone Description",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tên thành tựu; điều kiện vừa đạt; thông điệp ngắn"
+        },
+        {
+          "label": "Unlock / Reward Preview",
+          "position": "Dưới mô tả",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nội dung mới mở khóa hoặc phần thưởng đi kèm"
+        },
+        {
+          "label": "Next Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Continue / Explore / Equip tùy nội dung"
+        }
+      ]
+    },
+    {
+      "label": "Stage / Chapter",
+      "regions": [
+        {
+          "label": "Chapter Header / Resource Bar",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tên chapter; Back; năng lượng, tiền"
+        },
+        {
+          "label": "Chapter Progress",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Số màn hoàn thành; tổng sao; rương thưởng theo mốc"
+        },
+        {
+          "label": "Stage Map / Stage Grid",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nút từng màn; số màn, sao; trạng thái Locked, Cleared, Current"
+        },
+        {
+          "label": "Chapter Navigation",
+          "position": "Hai bên",
+          "areas": [
+            "left",
+            "right"
+          ],
+          "text": "Mũi tên chapter trước/sau; trạng thái chapter bị khóa"
+        },
+        {
+          "label": "Selected Stage Panel",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Tên màn, độ khó, mục tiêu, thưởng, năng lượng cần"
+        },
+        {
+          "label": "Start Action",
+          "position": "Trong panel màn",
+          "areas": [
+            "middle"
+          ],
+          "text": "Play; lựa chọn booster trước trận nếu có"
+        }
+      ]
+    },
+    {
+      "label": "PvP",
+      "regions": [
+        {
+          "label": "PvP Header / Season Bar",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; mùa giải, hạng, điểm"
+        },
+        {
+          "label": "Mode Selection",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Ranked, Casual, Friendly tùy game"
+        },
+        {
+          "label": "Player Matchup Panel",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Avatar, tên, đội hình/chỉ số của bạn và đối thủ; biểu tượng Vs"
+        },
+        {
+          "label": "PVP Progress / History",
+          "position": "Vùng phụ",
+          "areas": [
+            "middle"
+          ],
+          "text": "Chuỗi thắng; thưởng theo mốc; lịch sử đấu"
+        },
+        {
+          "label": "Match Action Area",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Find Match / Challenge; vé hoặc năng lượng cần"
+        },
+        {
+          "label": "Matchmaking Overlay",
+          "position": "Khi tìm trận",
+          "areas": [
+            "middle"
+          ],
+          "text": "Thời gian chờ; trạng thái tìm đối thủ; Cancel"
+        }
+      ]
+    },
+    {
+      "label": "Character List",
+      "regions": [
+        {
+          "label": "Screen Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Back; số nhân vật đã sở hữu"
+        },
+        {
+          "label": "Character Filter Bar",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Lọc vai trò, độ hiếm; sắp xếp cấp hoặc sức mạnh"
+        },
+        {
+          "label": "Character Grid",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Chân dung, tên, cấp, sao; nhãn Selected, New, Locked"
+        },
+        {
+          "label": "Character Preview Panel",
+          "position": "Vùng xem trước",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình nhân vật: animation; độ hiếm và vai trò"
+        },
+        {
+          "label": "Character Detail Panel",
+          "position": "Vùng chi tiết",
+          "areas": [
+            "middle"
+          ],
+          "text": "Chỉ số; kỹ năng; số mảnh; chi phí nâng cấp"
+        },
+        {
+          "label": "Character Action Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Select, Upgrade, Unlock"
+        }
+      ]
+    },
+    {
+      "label": "Profile",
+      "regions": [
+        {
+          "label": "Profile Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề: Back/Close"
+        },
+        {
+          "label": "Player Identity Panel",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Avatar, khung avatar, tên; ID và nút sao chép; cấp và EXP"
+        },
+        {
+          "label": "Player Summary",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hạng, clan, màn cao nhất; thành tích chính"
+        },
+        {
+          "label": "Achievement Showcase",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Huy hiệu, danh hiệu; thành tích đang trưng bày"
+        },
+        {
+          "label": "Profile Action Area",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Hồ sơ bản thân: Edit Name / Avatar. Hồ sơ người khác: Add Friend / Message"
+        }
+      ]
+    },
+    {
+      "label": "Tutorial",
+      "regions": [
+        {
+          "label": "Tutorial Overlay",
+          "position": "Phủ toàn màn",
+          "areas": [
+            "middle"
+          ],
+          "text": "Lớp tối; khóa các thao tác ngoài bước hướng dẫn"
+        },
+        {
+          "label": "Spotlight / Focus Area",
+          "position": "Vùng cần thao tác",
+          "areas": [
+            "middle"
+          ],
+          "text": "Khoét sáng hoặc viền nổi bật quanh nút, vật phẩm, bàn chơi"
+        },
+        {
+          "label": "Instruction Callout",
+          "position": "Gần vùng nổi bật",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hộp thoại ngắn; mũi tên; nhân vật hướng dẫn nếu có"
+        },
+        {
+          "label": "Gesture Hint",
+          "position": "Trên đối tượng",
+          "areas": [
+            "middle"
+          ],
+          "text": "Bàn tay chạm; đường kéo; animation mô phỏng thao tác"
+        },
+        {
+          "label": "Step Progress",
+          "position": "Phía trên hoặc dưới",
+          "areas": [
+            "top",
+            "bottom"
+          ],
+          "text": "Số bước hiện tại; chấm tiến độ"
+        },
+        {
+          "label": "Tutorial Controls",
+          "position": "Vùng hành động",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Next / Got It / Skip; hoặc tự chuyển khi thao tác đúng"
+        }
+      ]
+    },
+    {
+      "label": "Battle Pass",
+      "regions": [
+        {
+          "label": "Season Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tên mùa, thời gian còn lại; Back; nút thông tin"
+        },
+        {
+          "label": "Pass Progress Bar",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Cấp pass, EXP hiện tại; EXP cần cho cấp tiếp theo"
+        },
+        {
+          "label": "Reward Track",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Các mốc cấp; hai luồng Free / Premium; icon, số lượng, trạng thái nhận"
+        },
+        {
+          "label": "Premium Promotion",
+          "position": "Bên cạnh reward track",
+          "areas": [
+            "left",
+            "right"
+          ],
+          "text": "Quyền lợi premium; phần thưởng nổi bật; trạng thái đã mua"
+        },
+        {
+          "label": "Pass Action Bar",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Claim All, Buy Premium; tăng cấp nếu game hỗ trợ"
+        },
+        {
+          "label": "Pass Mission Entry",
+          "position": "Vùng điều hướng phụ",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nút mở nhiệm vụ kiếm EXP pass: badge nhiệm vụ hoàn thành"
+        }
+      ]
+    },
+    {
+      "label": "Pack IAP Popup",
+      "regions": [
+        {
+          "label": "Pack Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tên gói, Close; nhãn Limited / Sale"
+        },
+        {
+          "label": "Pack Artwork",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Hình minh họa gói hoặc vật phẩm chính"
+        },
+        {
+          "label": "Pack Contents",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Icon, tên, số lượng từng vật phẩm; quà tặng bổ sung"
+        },
+        {
+          "label": "Offer Conditions",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Thời gian còn lại; giới hạn mua; điều kiện áp dụng"
+        },
+        {
+          "label": "Purchase Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Nút mua kèm giá; trạng thái đang xử lý giao dịch"
+        }
+      ]
+    },
+    {
+      "label": "Settings",
+      "regions": [
+        {
+          "label": "Settings Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề; Close/Back"
+        },
+        {
+          "label": "Audio & Feedback Settings",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Music, Sound, Vibration; công tắc hoặc thanh âm lượng"
+        },
+        {
+          "label": "General Settings",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Language; Notifications; chất lượng đồ họa nếu cần"
+        },
+        {
+          "label": "Account & Support",
+          "position": "Dưới nội dung",
+          "areas": [
+            "middle"
+          ],
+          "text": "Liên kết tài khoản; hỗ trợ: Restore Purchases"
+        },
+        {
+          "label": "Legal / App Info",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Terms, Privacy Policy; phiên bản game; ID người chơi"
+        }
+      ]
+    },
+    {
+      "label": "Language",
+      "regions": [
+        {
+          "label": "Language Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề; Close/Back"
+        },
+        {
+          "label": "Language List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Tên ngôn ngữ theo cách viết bản địa; radio button hoặc dấu chọn"
+        },
+        {
+          "label": "Selection State",
+          "position": "Trong danh sách",
+          "areas": [
+            "middle"
+          ],
+          "text": "Ngôn ngữ đang dùng; ngôn ngữ vừa chọn"
+        },
+        {
+          "label": "Apply Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Apply / Confirm; thông báo tải lại nếu cần"
+        }
+      ]
+    },
+    {
+      "label": "Rate Us",
+      "regions": [
+        {
+          "label": "Rating Header",
+          "position": "Đầu popup",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề mời đánh giá; Close"
+        },
+        {
+          "label": "Rating Illustration",
+          "position": "Trung tâm phía trên",
+          "areas": [
+            "middle"
+          ],
+          "text": "Mascot, nhân vật hoặc hình minh họa"
+        },
+        {
+          "label": "Rating Message",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Lời mời ngắn; thông điệp cảm ơn"
+        },
+        {
+          "label": "Rating Action Area",
+          "position": "Cuối popup",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Rate Now mở luồng đánh giá; Later để đóng"
+        }
+      ]
+    },
+    {
+      "label": "Chat",
+      "regions": [
+        {
+          "label": "Chat Header",
+          "position": "Phía trên",
+          "areas": [
+            "top"
+          ],
+          "text": "Tiêu đề, Close; tên kênh hoặc người nhận"
+        },
+        {
+          "label": "Channel Tabs",
+          "position": "Dưới header",
+          "areas": [
+            "top"
+          ],
+          "text": "Global, Clan, Private; số tin chưa đọc"
+        },
+        {
+          "label": "Message List",
+          "position": "Trung tâm",
+          "areas": [
+            "middle"
+          ],
+          "text": "Avatar, tên, nội dung, thời gian; tin hệ thống; vùng cuộn"
+        },
+        {
+          "label": "New Message Indicator",
+          "position": "Cuối danh sách",
+          "areas": [
+            "middle"
+          ],
+          "text": "Nút xuống tin mới nhất; số tin chưa đọc"
+        },
+        {
+          "label": "Message Composer",
+          "position": "Phía dưới",
+          "areas": [
+            "bottom"
+          ],
+          "text": "Ô nhập, giới hạn ký tự; emoji; nút Send"
+        },
+        {
+          "label": "User Context Menu",
+          "position": "Khi chọn người gửi",
+          "areas": [
+            "middle"
+          ],
+          "text": "Xem Profile, Add Friend, Mute, Report"
+        }
+      ]
+    }
+  ]
+}

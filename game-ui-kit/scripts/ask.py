@@ -9,6 +9,7 @@ turn ending, and keeps the answer until --wait collects it.
 
 <form> is a file in the skill's forms/ folder: setup, wireframe, full, mockup, revise or export.
 The revise form offers the images in preview/<--kind>/ of the --screens given.
+For --kind concepts, pass one draft image stem in --screens to revise that concept.
 Prints a JSON line with the answers when the user submits. Attached files go to <kit>/inputs/.
 Nothing else is written: no copy of the form, no logs. Files in inputs/ that no answer file
 under <kit>/briefs/ refers to any more are deleted after every form.
@@ -20,6 +21,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -27,6 +29,8 @@ import time
 import unicodedata
 import webbrowser
 import zipfile
+from collections import defaultdict
+from contextlib import closing
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +39,8 @@ from urllib.parse import parse_qs, urlparse
 SKILL = Path(__file__).resolve().parent.parent
 FORMS = SKILL / "forms"
 CATALOG = SKILL / "references" / "catalog.md"
+FORM_SUGGESTIONS = SKILL / "references" / "form_suggestions.json"
+FORM_HISTORY = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "game-ui-kit" / "form-history.sqlite3"
 ALLOWED = {".png", ".jpg", ".jpeg", ".webp", ".psd", ".zip"}
 FROM_ZIP = {".png", ".jpg", ".jpeg", ".webp", ".psd"}
 MAX_FILE = 300 * 1024 * 1024
@@ -129,6 +135,10 @@ def screen_label(kit: Path, screen: str) -> str:
 
 def kit_previews(kit: Path, kind: str, screens: list[str]) -> list[dict]:
     """The rendered versions of the given screens, for the revise form, each with its image."""
+    if kind == "concepts":
+        folder = kit / "style" / "concepts"
+        return [{"value": image.stem, "label": "Concept đang chỉnh", "image": image.relative_to(kit).as_posix()}
+                for image in folder.glob("*.png") if image.stem in screens and image.is_file()]
     folder = kit / "preview" / kind
     options = []
     for stem in kit_layouts(kit):
@@ -208,12 +218,20 @@ def load_form(name: str, kit: Path) -> dict:
     if not path.exists():
         raise SystemExit(f"No form {name}. Forms: {sorted(p.stem for p in FORMS.glob('*.json'))}")
     form = read_json(path)
+    if name in ("setup", "wireframe", "mockup", "full"):
+        form["description_suggestions"] = read_json(FORM_SUGGESTIONS, {})
+        form["personal_suggestions"] = personal_suggestions(name, kit, form["description_suggestions"])
     for question in form["questions"]:
         if "options_from" in question:
             question["options"] = question.get("options", []) + options_for(question.pop("options_from"), kit)
         for field in question.get("file_fields") or []:
             if "suggestions_from" in field:
                 field["suggestions"] = [o["label"] for o in options_for(field.pop("suggestions_from"), kit)]
+    if name == "revise" and PREVIEW["kind"] == "concepts":
+        versions = next(q for q in form["questions"] if q["id"] == "versions")
+        versions.update(title="Bạn muốn chỉnh gì ở concept này?", hint="Ghi rõ phần cần đổi. Có thể đính kèm ảnh minh họa.")
+        form.update(title="Sửa concept", intro="Bấm Hoàn thành để tạo bản chỉnh sửa và xem lại trước khi chốt.",
+                    questions=[versions])
     return form
 
 
@@ -222,6 +240,104 @@ def load_form(name: str, kit: Path) -> dict:
 def answer_paths(kit: Path) -> list[Path]:
     briefs = kit / "briefs"
     return sorted(briefs.rglob("*.json")) if briefs.exists() else []
+
+
+def remember_kit(kit: Path) -> None:
+    """Index a kit after submission. The descriptions stay in its briefs."""
+    try:
+        FORM_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        with closing(sqlite3.connect(FORM_HISTORY, timeout=0.5)) as db, db:
+            db.execute("CREATE TABLE IF NOT EXISTS kits (path TEXT PRIMARY KEY, used_at INTEGER NOT NULL)")
+            db.execute("INSERT INTO kits VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET used_at = excluded.used_at",
+                       (str(kit.resolve()), time.time_ns()))
+    except (OSError, sqlite3.Error):
+        return
+
+
+def history_kits(kit: Path) -> list[Path]:
+    previous = []
+    if FORM_HISTORY.is_file():
+        try:
+            with closing(sqlite3.connect(FORM_HISTORY, timeout=0.5)) as db:
+                previous = [Path(path) for path, in db.execute("SELECT path FROM kits ORDER BY used_at DESC LIMIT 30")]
+        except sqlite3.Error:
+            pass
+    return list(dict.fromkeys([kit.resolve(), *previous]))
+
+
+def brief_descriptions(brief: dict):
+    """Yield a suggestion source, context, area and text from a submitted brief."""
+    answers = brief.get("answers") or {}
+    kind = brief.get("form")
+    if kind == "setup" and brief.get("game_type"):
+        for text in (brief.get("gameplay"), brief.get("game_type_description")):
+            yield "game_types", slug(brief["game_type"]), "", text
+    if kind == "wireframe" and brief.get("screen"):
+        screen = brief["screen"]
+        yield "screens", screen, "", (answers.get("function") or {}).get("value")
+        areas = (answers.get("areas") or {}).get("value") or {}
+        for area, text in areas.items():
+            yield "screens", screen, area, text
+    if kind in ("mockup", "full"):
+        for screen in brief.get("screens") or []:
+            if screen.get("screen"):
+                yield "screens", screen["screen"], "", screen.get("note")
+    if kind == "mockup":
+        style = (answers.get("ui_style") or {}).get("value") or {}
+        style_name = style.get("label") if style.get("choice") == "other" else style.get("choice")
+        context = slug(style_name) if style_name else ""
+        for text in ((answers.get("style_note") or {}).get("value"), brief.get("ui_style_description")):
+            yield "art_styles", context, "", text
+
+
+def normalized_note(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def personal_suggestions(form: str, kit: Path, catalog: dict) -> dict:
+    setup_path = Path("briefs/setup.json")
+    current_genre = (read_json(kit / setup_path) or {}).get("game_type")
+    if form != "setup" and not current_genre:
+        return {}
+    stock = {normalized_note(item["text"]) for group in ("game_types", "art_styles") for item in catalog.get(group, [])}
+    for screen in catalog.get("screens", []):
+        for region in screen["regions"]:
+            stock.update((normalized_note(region["text"]), normalized_note(f"{region['label']}: {region['text']}")))
+
+    groups = defaultdict(dict)
+    for previous in history_kits(kit):
+        setup = read_json(previous / setup_path) or {}
+        genre = setup.get("game_type")
+        if not genre or (form != "setup" and slug(genre) != slug(current_genre)):
+            continue
+        if form == "setup":
+            briefs = [setup]
+        else:
+            briefs = [read_json(path) or {} for folder in ("wireframe", "mockup")
+                      for path in (previous / "briefs" / folder).glob("*.json")]
+        for brief in briefs:
+            if not brief.get("submitted"):
+                continue
+            for source, context, area, value in brief_descriptions(brief):
+                if not isinstance(value, str):
+                    continue
+                text = re.sub(r"https?://\S+", "", value).strip()
+                key = normalized_note(text)
+                if not key or key in stock or all(normalized_note(line) in stock for line in text.splitlines() if line.strip()):
+                    continue
+                examples = groups[source, context, area]
+                entry = examples.setdefault(key, {"text": text, "kits": set(), "latest": ""})
+                entry["kits"].add(previous)
+                entry["latest"] = max(entry["latest"], brief["submitted"])
+
+    result = {}
+    for (source, context, area), examples in groups.items():
+        ranked = sorted(examples.values(), key=lambda item: (len(item["kits"]), item["latest"]), reverse=True)
+        result.setdefault(source, {}).setdefault(context, {})[area] = [
+            {"label": f"Mẫu bạn đã dùng · {len(item['kits'])} bộ UI", "text": item["text"]}
+            for item in ranked[:4]
+        ]
+    return result
 
 
 def referenced_files(value, found: set[str]) -> None:
@@ -285,6 +401,13 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
     if form_id in ("wireframe", "mockup"):
         record["options"] = int((answers.get("options") or {}).get("value") or 1)
     if form_id == "mockup":
+        kit_choice = (answers.get("kit") or {}).get("value") or {}
+        if kit_choice.get("choice") == "no":
+            concept = (answers.get("concept_count") or {}).get("value") or {}
+            count = concept.get("choice")
+            if count not in ("1", "2", "3"):
+                raise ValueError("Chọn từ 1 đến 3 lượt tạo ảnh concept.")
+            record["concept_count"] = int(count)
         # One screen per wireframe file. A blank name is for Codex to guess from the image.
         record["screens"] = [{"screen": slug(f.get("screen")) if (f.get("screen") or "").strip() else "",
                               "label": (f.get("screen") or "").strip(), "note": (f.get("note") or "").strip(),
@@ -295,8 +418,12 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
             record["ui_style_description"] = style["note"].strip()
     if form_id == "revise":
         record["kind"] = PREVIEW["kind"]
-        record["versions"] = [{"layout": e["choice"], "label": e.get("label"), "change": (e.get("note") or "").strip(),
-                               "files": e.get("files", [])} for e in (answers.get("versions") or {}).get("value") or []]
+        versions = [{"layout": e["choice"], "label": e.get("label"), "change": (e.get("note") or "").strip(),
+                     "files": e.get("files", [])} for e in (answers.get("versions") or {}).get("value") or []]
+        if record["kind"] == "concepts":
+            if len(versions) != 1 or versions[0]["layout"] not in PREVIEW["screens"] or not versions[0]["change"]:
+                raise ValueError("Ghi rõ phần cần sửa ở concept đang xem.")
+        record["versions"] = versions
     if form_id == "wireframe":
         record["prototype"] = ((answers.get("prototype") or {}).get("value") or {}).get("choice") == "yes"
     if form_id == "full":
@@ -418,6 +545,8 @@ class Handler(BaseHTTPRequestHandler):
                 record = apply_answers(self.server.form["id"], self.server.kit, answers)
                 self.server.out.parent.mkdir(parents=True, exist_ok=True)
                 self.server.out.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+                if "description_suggestions" in self.server.form:
+                    remember_kit(self.server.kit)
                 self.server.result = record
                 self.send_json(200, {"ok": True})
                 self.server.done.set()
@@ -436,6 +565,9 @@ def serve(args, kit: Path) -> int:
     out = kit / args.out
     old = read_json(out, {}) or {}
     prefill = old.get("answers") or {}
+    if args.form == "revise" and args.kind == "concepts":
+        draft = form["questions"][0]["options"][0]
+        prefill.setdefault("versions", {"value": [{"choice": draft["value"], "label": draft["label"]}]})
     for question in form["questions"]:
         if question.get("default_from") and question["id"] not in prefill:
             files = defaults_for(question["default_from"], kit)
@@ -551,9 +683,9 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=1800, help="Seconds this command waits for the answer")
     parser.add_argument("--keep", type=int, default=86400, help="Seconds the form stays open")
     parser.add_argument("--no-browser", action="store_true", help="Only print the URL")
-    parser.add_argument("--kind", choices=["wireframes", "mockups"], default="mockups",
+    parser.add_argument("--kind", choices=["wireframes", "mockups", "concepts"], default="mockups",
                         help="revise form: which images to offer")
-    parser.add_argument("--screens", default="", help="revise form: comma-separated screens to offer, default all")
+    parser.add_argument("--screens", default="", help="Comma-separated screens to offer, or one concept image stem")
     parser.add_argument("--detach", action="store_true", help="Open the form and return at once, without waiting")
     parser.add_argument("--foreground", action="store_true", help="Serve in this process, for testing")
     parser.add_argument("--wait", action="store_true", help="Wait for the form started with --detach")
@@ -573,6 +705,9 @@ def main() -> int:
         parser.error("form and --out are required")
     if not args.out.replace("\\", "/").startswith("briefs/"):
         parser.error("--out must be under briefs/")
+    if args.kind == "concepts" and (args.form != "revise" or len(PREVIEW["screens"]) != 1
+                                   or not kit_previews(kit, args.kind, PREVIEW["screens"])):
+        parser.error("--kind concepts requires the revise form and one existing concept image stem in --screens")
     kit.mkdir(parents=True, exist_ok=True)
     if args.foreground or args.child:
         return serve(args, kit)

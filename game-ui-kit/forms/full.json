@@ -10,7 +10,7 @@
       "hint": "Chọn được nhiều màn. Mỗi màn có thể viết mô tả và thêm ảnh ref.",
       "required": true,
       "options_from": "kit:screens+catalog:screens",
-      "option_extras": {"describe": true, "attach": true},
+      "option_extras": {"describe": true, "attach": true, "suggest_from": "screens"},
       "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn", "repeat": true}
     },
     {

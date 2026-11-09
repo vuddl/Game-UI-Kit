@@ -16,6 +16,8 @@
       "type": "text",
       "title": "Mô tả chức năng màn",
       "required": true,
+      "suggest_from": "screens",
+      "suggest_context": "screen",
       "multiline": true
     },
     {
@@ -23,6 +25,8 @@
       "type": "fields",
       "title": "Mô tả từng vùng",
       "hint": "Vùng để trống thì Codex tự quyết.",
+      "suggest_from": "screens",
+      "suggest_context": "screen",
       "fields_by": {
         "context": "orientation",
         "portrait": [

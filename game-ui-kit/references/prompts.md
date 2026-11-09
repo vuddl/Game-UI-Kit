@@ -18,17 +18,19 @@ A screen with only text labels where an icon would do is unfinished. In settings
 
 ## Prompt template for a screen concept
 
-Use this for each screen type after the style anchor is chosen.
+Use this for the initial demo and each later screen concept. Use the approved anchor as a style reference when available.
 
 ```text
 Use case: stylized-concept
 Asset type: game UI screen concept, used as the design target for one screen
-Input images: Image 1: style reference, match its materials, palette, border treatment, lighting and level of detail exactly
+Input images: <wireframe for layout and required features, if supplied; style references for materials, palette, borders, lighting and level of detail>
 Primary request: the <screen> screen of <game>, <orientation>, showing <functions of the screen>
 Must include: <screen-specific minimum from the catalog, plus what the brief adds>
+UI copy: Render only these exact English strings: <primary button labels, navigation captions, left-column IAP names, right-column feature names, and other essential text and values from the mockup copy rules>. Use illustrations, icons and numbers to communicate the other features.
 Style/medium: <style guide summary>
-Composition/framing: full screen, front-on; the same level of decoration as Image 1, not a simplified version of it
-Avoid: one plain panel holding only text and buttons; reusing Image 1's layout; watermark
+Composition/framing: full screen, front-on, following the wireframe layout when supplied
+Background: <approved source and visual direction>. For Home, show a crisp game scene with suitable props, a UI-kit background, or an abstract graphic backdrop. Use blur and dimming only on the parent screen behind a popup or overlay panel.
+Avoid: duplicate labels, wireframe explanations, one plain panel holding only text and buttons, watermarks
 ```
 
 ## Sheet limits
@@ -66,9 +68,9 @@ Constraints: never use the background color or anything close to it inside the e
 ## Additions by family
 
 - **Stretchable panels, buttons, plates:** "decorations only at corners and edges; plain flat center with no texture, pattern or gradient across the width, so that it can be 9-sliced."
-- **Buttons:** draw only the normal state. The script derives pressed and disabled.
-- **Bars:** "track and fill as separate elements, same height, plain horizontal middle section."
-- **Icons:** "same visual weight, same outline and lighting, centered, each fills about the same area."
+- **Buttons:** draw the normal state. The script derives disabled sprites. Use the normal sprite for press feedback in the game.
+- **Bars:** draw the track and fill separately on the same sheet, with the same height and a plain horizontal middle section.
+- **Icons:** use consistent visual weight, outline and lighting. Draw one straight base pose per icon and reuse it for directional variants that can be obtained by flipping or rotating it.
 
 ## Common failures
 

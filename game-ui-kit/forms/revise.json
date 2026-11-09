@@ -11,15 +11,18 @@
       "required": true,
       "options_from": "kit:previews",
       "option_extras": {"describe": true, "describe_placeholder": "Muốn sửa gì ở bản này?", "describe_required": true,
-                        "attach": true, "attach_hint": "Gắn ảnh minh họa ý sửa: kéo thả hoặc bấm để chọn. Mỗi ảnh có ô ghi chú."}
+                        "attach": true, "attach_label": "Thêm ảnh minh họa",
+                        "attach_hint": "Bấm để chọn hoặc kéo thả ảnh vào đây. Bạn có thể ghi chú riêng cho mỗi ảnh."}
     },
     {
       "id": "common",
       "type": "text",
       "title": "Ý sửa chung cho tất cả các bản",
-      "hint": "Không bắt buộc. Có thể gắn ảnh.",
+      "hint": "Không bắt buộc.",
       "multiline": true,
-      "attach": true
+      "attach": true,
+      "attach_label": "Thêm ảnh minh họa dùng chung",
+      "attach_hint": "Bấm để chọn hoặc kéo thả ảnh vào đây."
     }
   ]
 }

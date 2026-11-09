@@ -49,6 +49,7 @@
         "label": "Lựa chọn khác",
         "placeholder": "Tên thể loại",
         "describe": true,
+        "suggest_from": "game_types",
         "describe_placeholder": "Mô tả thể loại này: chơi thế nào, mục tiêu, cảm giác (không bắt buộc)"
       }
     },
@@ -57,6 +58,8 @@
       "type": "text",
       "title": "Mô tả sơ lược về gameplay",
       "required": true,
+      "suggest_from": "game_types",
+      "suggest_context": "game_type",
       "multiline": true
     }
   ]

@@ -7,7 +7,9 @@ description: Generate game UI wireframes, visual mockups and design files throug
 
 Produce finished UI artwork with the built-in `image_gen` tool from the `imagegen` skill. It runs on the user's signed-in Codex account. Never use the `image_gen.py` CLI, an `OPENAI_API_KEY` or any paid service; if the built-in tool is unavailable or the plan limit is reached, stop and tell the user. Scripts handle cutting, naming, 9-slice and checks, so never hand-crop sheets or edit `manifest.json` by hand.
 
-**Always reply to the user in Vietnamese,** including results, reports, choices and errors, whatever language the command or the scripts use. Keep commands, file paths, element names and in-game text as they are; in-game text follows the Text rule in Mockup.
+**Always reply to the user in Vietnamese,** including results, reports, choices and errors, whatever language the command or the scripts use. Keep commands, file paths and element names as they are.
+
+**Use English for all visible UI copy** in generated wireframes, concepts, mockups and prototypes, including titles, labels, button text, captions, badges and status messages. Translate visible copy carried over from briefs, references or earlier layouts. Check the rendered output for English copy before showing it, including after revisions.
 
 Run scripts with `py -3` on Windows and `python3` elsewhere. They need Pillow and numpy. `<skill>` below is this skill's folder.
 
@@ -94,6 +96,8 @@ Attached files are saved in `inputs/` and listed with their paths and notes in t
 
 **Short questions in between,** such as the choices after showing a result, use the `request_user_input_async` tool when it is listed: one to three questions, each with short options, the recommended one first. It returns at once, so end the turn after calling it and act on the reply when it arrives. In Plan mode, use `request_user_input` instead. Without either tool, ask in one short message with numbered options the user can answer with a number. Never ask a form's questions this way.
 
+**Revision prompts.** When the user chooses **Sửa concept** or **Sửa chữa tiếp**, open `revise` directly for the current draft or versions. Collect the change request, reference images and per-image notes together in the form. Apply each image as a reference for the version it was attached to.
+
 ## $setup
 
 1. `state.py begin setup`, creating the kit as Which kit says.
@@ -121,17 +125,17 @@ Wireframes are clean, readable screens drawn from the layout in a headless brows
 Write layouts as [references/mockup.md](references/mockup.md) describes, at the setup's `size`, from the screen's function and its areas in the form: portrait Top, Middle, Bottom, or landscape Top, Left, Right, Bottom, used as `group` names. An empty area is yours to decide. Elements that do not exist yet are fine here. Follow the per-screen minimum in [references/prompts.md](references/prompts.md), so each screen shows what it is for.
 
 - **Give every item its kind** with `wf`, and an `icon`, as the Wireframe items table in [references/mockup.md](references/mockup.md) lists, so it draws as a real control: currency as `pill` with `coins` or `gem`, the main action as `button_primary`, side features as `icon_button` with a short caption, a bottom `bar` with `tab` items and one `selected`, progress as `progress` with `fill`, art as `image`.
-- **Real text,** in Vietnamese unless the setup names another language: the actual title, values, captions and button labels, such as "Chơi", "12.500", "Tiến độ 3 / 8". Never a placeholder like "Button" or "Text", and never the element name.
+- **Real text.** Write the actual English titles, values, captions and button labels the player should see, such as "Play", "12,500" and "Progress 3 / 8". Reserve element names for the source layout.
 - **Build a hierarchy:** one large `title`, small `label` captions above sections, values in bold, secondary lines in `text`. Use a few sizes consistently.
 - **No flow text on the screen.** Never write a target such as "> shop" or "gem > shop" in a label. Add `goto` only once a screen's form said yes to a prototype, in step 5; links show only in `demo/index.html` and `preview/flow.png`, never on the wireframe.
 
 ## $mockup
 
-1. **Form.** Open the `mockup` form with `--out briefs/mockup/_new.json`. It answers the wireframe files, the UI kit or references or art style, the background and the options count per screen. **Each wireframe file is one screen,** listed in the record's `screens` with its `label`, `note` and `file`; this kit's wireframes come prefilled with their names.
+1. **Form.** Open the `mockup` form with `--out briefs/mockup/_new.json`. It records the wireframes, the UI kit or references or art style, the background, the final mockup count per screen (`options`) and, without a UI kit, the initial concept image count (`concept_count`). **Each wireframe file is one screen,** listed in the record's `screens` with its `label`, `note` and `file`; this kit's wireframes come prefilled with their names.
    - A screen with an empty `screen` has no name: view its image, name it yourself from what it shows, and say which name you gave.
-   - Two files for the same screen, such as `home__v1` and `home__v2`: ask, as a choice, which one to build from.
+   - Use the submitted wireframe for each screen. If several versions of the same screen are listed, use the one the user explicitly confirmed when it is among those files. Ask which one only if the choice is still ambiguous.
    - Then rename the file to `briefs/mockup/<first screen>.json`, and take every screen in the list through the steps below.
-2. **Prepare.** Pick the role from the answers, as Choose the role says, and follow it until the sprites the screen needs exist. Before generating images, say the count and ask, as a choice, whether to go ahead.
+2. **Prepare.** Pick the role from the answers and follow it until the sprites the screen needs exist. A submitted `concept_count` authorizes that many initial concept images for the selected brief. On `SUBMITTED`, state the count in a progress update and start generating in the same turn. Reuse the saved approval and concept images when resuming. If an older brief lacks `concept_count`, use any explicit approval already given in the form notes or chat. Ask for generation approval only when the work exceeds the approved scope or count.
 3. **Build the screen.** Start from the wireframe the user attached. When it is one of this kit's `preview/wireframes/` images, start from its layout in `mockups/`; otherwise view the image, set it as the layout's `reference` and measure from it in `keep` mode. Write `options` layouts as `mockups/<screen>__v1.json` and so on, replacing that screen's wireframe layouts. Give the screen the background the form chose, as Backgrounds and art describes, and render it as Mockup describes. Show `preview/mockups/<screen>__v*.png`.
 4. **Ask, as a choice:** **Sửa chữa tiếp**, **Làm full màn** or **Tiếp tục**, exactly as `$wireframe` step 3, with `--kind mockups` for the `revise` form. **Có, làm màn tiếp** opens the `mockup` form again, which asks everything again; use its new answers for those screens.
 5. **All the other screens at once.** Open the `full` form with `--out briefs/mockup/full.json`. Build every screen it picks with the first screen's setup: its kit or style, its background choice and its options count. Use the screen's wireframe in `mockups/` when one exists, otherwise lay it out yourself, with each screen's note and reference files and the shared request.
@@ -173,7 +177,7 @@ Import the kit as Existing kit describes, then build the screens from it, adding
    - **References:** use every file given, with its note deciding whether it is a reference for **layout** or **art style**, art style when it does not say. Give each the matching role in the Brief.
    - **Description:** use the colors, bright or dark theme, the chosen UI style and its description from [references/catalog.md](references/catalog.md), and the notes. A style typed under Lựa chọn khác uses its `ui_style_description` instead of a catalog entry. Put them into the style guide and every prompt.
    - **References with style answers:** with references, the colors, theme, UI style and notes are optional. What is left empty comes from the references; what is answered overrides them, such as a dark theme over a bright reference. Say in one line what you took from the references and what from the answers.
-2. **Demo.** Generate the demo screen as in step 2, Style anchor, and let the user confirm it. Once confirmed, it is the anchor for the art style of every other screen. Save it as `style/style_anchor.png`, and add it as the screen's `reference`, measuring the mockup from it in `keep` mode so the confirmed screen keeps its proportions.
+2. **Demo.** Generate and review the demo screen as in Style anchor. Use the final approved draft as the style anchor and the screen's visual `reference`. Measure the mockup in `keep` mode using the confirmed proportions.
 3. **Screen concepts.** Generate one concept per other screen type, in the demo's style, as Style anchor describes. Each shows what that screen needs beyond the shared parts.
 4. **Two layers of components.** Build the base set first, exactly as [references/ui_kit_standard.md](references/ui_kit_standard.md) lists it: buttons in 6 colors plus special buttons, popup, font, title frames in 6 colors, background and pattern, the common icons, coin and gem in 5 tiers, common shapes, palette, reward frames and loading bars, with the names it gives. Draw the shapes with `shapes` rather than `image_gen`. Use and reuse the base set on every screen. Then build each screen's specific parts from its concept, such as tabs, item cards and price tags for a shop, or row icons and toggles for settings. Do not limit other screens to what the demo screen showed, which makes every screen look the same. Keep the base small and avoid near-duplicates, but never drop a screen's specific parts to save resources. Tell the user the image count per screen.
 
@@ -188,14 +192,15 @@ The form's background answer decides the source:
 The form's background note applies to all of these. Then:
 
 - **Every screen has a background,** never a flat placeholder color.
+  - **Home:** use a crisp scene with scenery and props that fit the game, a suitable background from the UI kit, or an abstract graphic backdrop without a specific setting. Compose the background with quieter areas behind UI controls.
   - **HUD:** generate a gameplay scene image that fits the game's art style, and put it under the HUD.
-  - **Popup:** use the screen that opens it, blurred and dimmed. Render that screen first, then:
+  - **Popup or overlay panel:** reserve backdrop blur and dimming for the parent screen visible behind a foreground overlay. Standalone screens use their own backgrounds at normal sharpness and brightness. Render the parent screen first and run:
 
 ```bash
 py -3 <skill>/scripts/uikit.py backdrop ui_art/<kit> <parent_screen>
 ```
 
-  This writes `elements/backgrounds/bg_blur_<parent_screen>.png`. Set it as the popup layout's `background`, and rebuild it with `--force` when the parent screen changes.
+  This writes `elements/backgrounds/bg_blur_<parent_screen>.png`. Set it as the overlay layout's `background`, and rebuild it with `--force` when the parent screen changes.
 - **Characters and items:** use them from the kit when it has them. Otherwise generate them to fit the game's art style, as `characters/` and `items/` elements. Show an item with its art, not with text or long descriptions.
 - Generated backgrounds, scenes, characters and items are elements like any other, made with `image_gen` and listed with their image count before generating. Mark them `"role": "art"` in layouts. This is not drawing the mockup itself, which stays forbidden.
 
@@ -254,9 +259,11 @@ Keeping resources few applies to the base layer and to near-duplicates, never to
 
 ## 2. Style anchor
 
-Generate 1 to 3 concepts of the most representative screen. Without references, offer distinct directions. With references, stay close to them.
+Generate the approved number of concepts of the most representative screen using the [screen concept prompt](references/prompts.md). Use the confirmed wireframe for layout and required features. Select the English strings to keep using the [mockup copy rules](references/mockup.md#mockup-copy) and use the approved background source from Backgrounds and art. Include the selected strings and background treatment in every concept and revision prompt. Without style references, vary the visual direction. With style references, stay close to them.
 
-**Let the user choose, as a choice,** before generating any sheets, because every later image depends on it and uses their plan quota. Then save the choice as `style/style_anchor.png` and write `style/style_guide.md` with the palette, materials, corner shape, border treatment, lighting direction and icon treatment.
+1. **Select a draft.** Save the concept images in `style/concepts/` with distinct names such as `home__concept_1.png` and show them. If there is more than one, ask which to refine. With one concept, use it as the draft. Record the draft's path in the command step and enter review.
+2. **Review the current draft.** Show its image and offer **Sửa concept** and **Chốt concept**. On **Sửa concept**, open `revise` with `--kind concepts --screens <draft_stem> --out briefs/mockup/concept_revisions/<draft_stem>.json`. The form shows just that draft and collects changes and optional reference images. On `SUBMITTED`, view the reference images and apply the edits to the draft while keeping the confirmed wireframe layout. Save the revised image under a new name, record its path, show it, and repeat this review step.
+3. **Finalize.** Move on to component production only when the user chooses **Chốt concept** or explicitly approves the current draft during review. Record the exact approved image as the kit-relative `approved_concept` path in the current mockup brief, copy it to `style/style_anchor.png`, and write `style/style_guide.md` with the palette, materials, corner shape, border treatment, lighting direction and icon treatment. If a run resumes with a draft and no `approved_concept` in its brief, return to review of the latest draft. An existing anchor file alone does not establish approval.
 
 **Screen concepts.** The anchor fixes the style, not the content of other screens. A screen built only from the anchor screen's parts comes out as one plain panel, one button and text. So after the anchor is chosen, generate one concept for each other screen type, such as shop, settings, inventory or results, attaching the anchor as the style reference and using the concept template in [references/prompts.md](references/prompts.md). Screens of one type, such as two popups, share one concept. Say the image count first and show the concepts together. Save them as `style/concepts/<screen>.png` and set each as its layout's `reference`, so the mockup is checked against it in `<screen>_vs_reference.png`. The mockup reports `DETAIL_GAP` when it is much plainer than its concept; fix that before showing the screen.
 
@@ -264,7 +271,11 @@ Skip screen concepts only in Role A when the kit already covers a screen's speci
 
 ## 3. Component sheets
 
+For Role B, start generating component sheets and other production sprites only after final approval of the current concept is saved in its mockup brief. Follow the approved scope and image count from Prepare.
+
 Generate one `image_gen` call per sheet using the templates in [references/prompts.md](references/prompts.md), attaching the style anchor as a style reference every time. Save each as `sheets/<sheet>.png`.
+
+Plan the [base components](references/ui_kit_standard.md) before building screen-specific parts. Use one canonical, upright icon for any set of variants that can be flipped or rotated from the same artwork. List the base sprite once and reuse it with a transform in the game. Keep distinct art for different meanings or states. Put each loading bar fill and track on the same sheet so `slice` can align their canvases.
 
 Write `sheets/<sheet>.txt` with one element name per line, left to right and top to bottom, such as `buttons/btn_yellow`. Names use lowercase letters, digits and underscores, with `/` for folders.
 
@@ -275,17 +286,18 @@ Check each sheet by eye before slicing. Regenerate it if elements overlap, conta
 Slice each sheet:
 
 ```bash
-py -3 <skill>/scripts/uikit.py slice ui_art/<kit> sheets/<sheet>.png
+py -3 <skill>/scripts/uikit.py slice ui_art/<kit> sheets/<sheet>.png --canonical-icons
 ```
 
-The script reads real alpha when present, otherwise it keys out a flat background. Handle its failures this way:
+The script reads real alpha when present, otherwise it keys out a flat background. It trims sprites to their visible bounds and adds only the transparent padding needed for width and height to be multiples of four. It preserves the standard reward frame size and gives loading bar pairs on the same sheet a shared canvas. Use `--canonical-icons` for newly generated sheets and omit it when importing existing kit artwork. Handle its failures this way:
 
 | Result | Action |
 |---|---|
 | `BACKGROUND_NOT_FLAT` | The sheet has a painted or fake checkerboard background. Regenerate on the flat key color. |
 | `COUNT_MISMATCH` | Open the labeled sheet in `preview/`. Fix `--gap` if parts split or merged, fix the `.txt` if the list is wrong, or regenerate. |
+| `DUPLICATE_ICON` | Keep the canonical icon in the plan and reuse it for the equivalent directions. |
 
-Suggest 9-slice for elements that stretch, then derive button states:
+Suggest 9-slice for elements that stretch, then derive disabled button sprites:
 
 ```bash
 py -3 <skill>/scripts/uikit.py nineslice ui_art/<kit> --match "popups/*" --match "buttons/btn_*"
@@ -297,7 +309,7 @@ py -3 <skill>/scripts/uikit.py nineslice ui_art/<kit> --match "bars/*" --axis ho
 py -3 <skill>/scripts/uikit.py states ui_art/<kit> --match "buttons/btn_*"
 ```
 
-Prefer derived states, because separately generated states rarely line up pixel for pixel. Generate a state with AI only when it needs a different drawing, such as a locked state with a padlock.
+Use the normal button sprite for press feedback in the game. Generate a separate state only when it needs different artwork, such as a locked button with a padlock.
 
 ## Compare with references
 
@@ -315,7 +327,7 @@ The numbers are only a screening aid and cannot judge shape, border style, mater
 
 Build mockups from the kit's real sprites, so the user can judge how the set works together. Run 9-slice first, so panels and buttons stretch correctly.
 
-**Layout.** A screen with a wireframe, a layout reference or a concept uses `keep` against it: preserve its positions and sizes, only fixing real faults such as overlaps and cut-off items, and report each change. Measure every part a concept shows, decorations included, and give each its own element, so the mockup reproduces the concept rather than a sparser version of it. With none of these, or when the user says `rearrange`, decide the layout yourself following the guide in [references/mockup.md](references/mockup.md). Make options genuinely different, and explain each in one line.
+**Layout.** A screen with a wireframe, a layout reference or a concept uses `keep` against it. Preserve the positions and sizes of the feature groups and controls. The wireframe establishes the layout and required features. Choose how to depict each feature using the mockup copy rules. Measure the approved concept's visual details, including its decorations, and give each its own element. Fix issues such as overlaps and cut-off items and report layout changes. With no reference or when the user says `rearrange`, follow the guide in [references/mockup.md](references/mockup.md). Make options genuinely different, and explain each in one line.
 
 **Count.** The form's options count is the number of layouts per screen. Tell the user the total before rendering, which `--plan` prints:
 
@@ -328,7 +340,7 @@ py -3 <skill>/scripts/uikit.py mockup ui_art/<kit> --screen <screen>
 
 When there is a reference, view it, measure positions in its pixels, and set `reference`. Convert a reference of another size with `resize-layout`, which scales without distortion and reports empty margins; tell the user about them.
 
-**Text.** Write in-game text in English unless the user names another language or the reference's text is in one. This is separate from the language you reply in. Add a label only where the meaning is not already clear, as the guide in [references/mockup.md](references/mockup.md) explains.
+**Text.** Apply the [mockup copy rules](references/mockup.md#mockup-copy) to the concept and assembled screen. Set retained English copy as editable text, including when building from an older wireframe or a reference in another language.
 
 **Font.** Use the kit's font. If there is none, pick one following [references/fonts.md](references/fonts.md) before rendering, and report which. A `no font in the kit` warning means this step was missed.
 
@@ -344,7 +356,7 @@ Never use `image_gen` to draw or polish a mockup, because a painted screen would
 py -3 <skill>/scripts/uikit.py qa ui_art/<kit>
 ```
 
-Run this before showing a `$mockup` result. View `preview/contact_sheet.png`, `preview/compare.png`, `preview/mockups/` and the images in `preview/nineslice/`. Fix what the reports and your own eyes find, regenerating a given sheet at most twice. After that, stop and report the problem instead of spending more of the user's quota.
+Run this before showing a `$mockup` result. View `preview/contact_sheet.png`, `preview/compare.png`, `preview/mockups/` and the images in `preview/nineslice/`. Check the sprite canvases and resolve duplicate directional icons in the new kit before delivery. Fix what the reports and your own eyes find, regenerating a given sheet at most twice. After that, stop and report the problem instead of spending more of the user's quota.
 
 A `needs_review` 9-slice means no stretchable band was found. Regenerate that element with a plainer center, or tell the user it needs manual border work. Never report it as ready. A large-border warning means the corners take most of the sprite, so it only looks right near its original size. Keep it at that size or regenerate it with smaller corners.
 

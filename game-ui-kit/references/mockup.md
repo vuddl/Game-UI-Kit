@@ -9,8 +9,8 @@ One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.js
   "reference": "style/references/shop.png",
   "items": [
     {"element": "panels/shop_panel", "x": 540, "y": 960, "w": 980, "h": 1400, "anchor": "center"},
-    {"text": "Cửa hàng", "x": 540, "y": 330, "w": 700, "h": 90, "anchor": "center", "text_size": 64, "text_stroke": 3},
-    {"element": "buttons/btn_yellow", "x": 540, "y": 1500, "w": 420, "h": 130, "anchor": "center", "text": "Mua", "text_size": 48},
+    {"text": "Shop", "x": 540, "y": 330, "w": 700, "h": 90, "anchor": "center", "text_size": 64, "text_stroke": 3},
+    {"element": "buttons/btn_yellow", "x": 540, "y": 1500, "w": 420, "h": 130, "anchor": "center", "text": "Buy", "text_size": 48},
     {"element": "icons/ruby", "x": 200, "y": 700, "w": 140}
   ]
 }
@@ -73,6 +73,15 @@ Without `wf`, the kind is guessed from the element name, such as `buttons/` as `
 
 Icons, from Lucide: settings, coins, gem, zap, heart, star, store, shopping-cart, house, play, pause, trophy, medal, crown, gift, package, backpack, user, circle-user, users, lock, x, arrow-left, chevron-left, chevron-right, plus, mail, bell, calendar, clock, timer, hourglass, map, flag, sword, swords, shield, hammer, wrench, key, scroll, book-open, list-checks, ticket, rotate-ccw, refresh-cw, tv, ban, volume-2, music, globe, info, circle-help, check, thumbs-up, message-circle, share-2, sparkles, flame, target, award, castle, car, puzzle, gamepad-2, rocket, image, search, menu, sliders-horizontal, and more in `assets/wire_icons.json`. Short aliases also work: coin, energy, close, back, shop, profile, inventory, mission, ranking, daily, spin, sound, language, ads, no_ads, chest, battle, reward.
 
+## Mockup copy
+
+Use these rules for demo concepts, revisions and assembled mockups. Keep the layout and required features from the wireframe. Choose the final copy separately.
+
+- Prefer illustrations, icons and numbers when they communicate the feature. Show currency with its icon and balance, and progress with a bar and a value. Drop duplicate captions, explanatory sentences and descriptions the player can infer from the UI.
+- Keep short English labels on primary action buttons such as `Play` and `Building`, even when the button has an icon.
+- Keep short English names beneath the icons for navigation tabs such as `Shop`, `Home` and `Ranking`, for IAP offers in the left column such as `Starter Pack`, and for features in the right column such as `Daily`, `Spin` and `Missions`.
+- Keep other text when the player needs it to identify an item or understand an action. Before sharing a concept or mockup, check that each required feature is still recognizable and each required label is readable.
+
 ## Layout guide for rearranging
 
 Use this to judge your own work, and adapt it to the game's genre and the user's references.
@@ -83,7 +92,6 @@ Use this to judge your own work, and adapt it to the game's genre and the user's
 - Keep tappable items at least about 7 percent of the screen's short side, and clear of edges and notches.
 - Leave breathing room rather than filling every space, and move secondary actions into a menu when a screen is crowded.
 - Keep text short and readable. Add a dark plate or outline when it sits on busy art.
-- Label only what needs it. Universal icons such as settings, save, close, map, shop, jump and run need no caption. Keep text for values, such as currency, level and timers; for names the player must read, such as a mission; and for icons a new player could not guess. Fewer captions also mean larger icons.
 - Take colors from the kit's palette. Group by tone, and keep the same surface treatment across all controls of one rank, so the screen reads as one set. Reserve the strongest accent for the main action.
 - Follow the visual weight of the tone you chose. Light, translucent controls and heavy dark panels are different decisions, and mixing them looks wrong even if every color is on the palette.
 
@@ -92,6 +100,6 @@ The `mockup` command warns about small tap targets, items too near the edge or o
 ## Notes
 
 - Show a progress bar with its track as one item and its fill on top with `fill`, sized slightly inside the track.
-- Use `_pressed` or `_disabled` elements only to show those states, otherwise the bare name, such as `btn_yellow`.
+- Use the bare button sprite such as `btn_yellow` for normal and press feedback. Use an existing `_pressed` sprite when reproducing a legacy layout that specifies it, and `_disabled` to show a disabled button.
 - A missing element draws as a red `MISSING` box and exits with status 2.
 - Unknown keys are rejected, so a typo cannot silently change the layout.

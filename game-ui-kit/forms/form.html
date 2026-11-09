@@ -38,10 +38,15 @@ h1{margin:0 0 6px;font-size:26px}
 input[type=text],input[type=number],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);font:inherit}
 textarea{min-height:64px;resize:vertical}
 input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.suggestions{max-height:230px;overflow:auto;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.suggestion{display:block;width:100%;padding:8px 11px;border:0;background:transparent;color:var(--text);text-align:left}
+.suggestion:hover,.suggestion[aria-selected=true]{background:var(--accent-soft)}
+.suggestion small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--muted);white-space:normal}
 .flabel{font-size:13px;color:var(--muted);margin-bottom:3px}
 .fields{display:grid;gap:10px;margin-top:12px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.drop{border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
+.drop{width:100%;background:transparent;border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
+.drop strong{display:block;color:var(--accent);margin-bottom:2px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .files{display:flex;flex-direction:column;gap:8px}
 .file{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px}
@@ -99,12 +104,103 @@ function textInput(value, onChange, opts = {}){
   return input;
 }
 
+const searchText = s => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/đ/g, "d");
+let suggestionLists = 0;
+
+function descriptionChoices(source, context, area){
+  const catalog = SPEC.description_suggestions?.[source] || [];
+  const key = context ? slug(context) : "";
+  const personal = SPEC.personal_suggestions?.[source]?.[key]?.[area || ""] || [];
+  const selected = key && catalog.find(item => slug(item.label) === key);
+  if (source !== "screens"){
+    const ordered = selected ? [selected, ...catalog.filter(item => item !== selected)] : catalog;
+    return [...personal, ...ordered];
+  }
+
+  const areas = area === "middle" ? ["middle", "left", "right"] : [area];
+  const screenChoices = (selected ? [selected] : catalog).flatMap(screen => {
+    const regions = area ? screen.regions.filter(region => region.areas.some(a => areas.includes(a))) : screen.regions;
+    const choices = regions.map(region => ({label: `${screen.label} · ${region.label}`, text: region.text,
+      hint: `${region.position} · ${region.text}`}));
+    if (selected && choices.length > 1){
+      choices.unshift({label: `${screen.label} · ${area ? "Toàn bộ vùng này" : "Tất cả vùng"}`,
+        hint: regions.map(region => region.label).join(" · "),
+        text: regions.map(region => `${region.label}: ${region.text}`).join("\n")});
+    }
+    return choices;
+  });
+  return [...personal, ...screenChoices];
+}
+
+function descriptionInput(value, onChange, opts, getContext = () => ""){
+  const input = textInput(value, onChange, opts);
+  if (!SPEC.description_suggestions?.[opts.suggest_from]?.length && !SPEC.personal_suggestions?.[opts.suggest_from]) return input;
+  const list = el("div", {id: `suggestions_${++suggestionLists}`, class: "suggestions", role: "listbox",
+    "aria-label": "Gợi ý mô tả", hidden: true});
+  input.setAttribute("aria-controls", list.id);
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-expanded", "false");
+  let active = -1;
+
+  function setOpen(open){
+    list.hidden = !open;
+    input.setAttribute("aria-expanded", String(open));
+    input.removeAttribute("aria-activedescendant");
+    active = -1;
+  }
+  function show(query){
+    const choice = VALUES[opts.suggest_context]?.value;
+    const context = choice ? (choice.choice === "other" ? choice.label : choice.choice) : getContext();
+    const terms = searchText(query).trim().split(/\s+/).filter(Boolean);
+    const matches = descriptionChoices(opts.suggest_from, context, opts.area).filter(item => {
+      const content = searchText(`${item.label} ${item.text} ${item.hint || ""}`);
+      return terms.every(term => content.includes(term));
+    });
+    list.replaceChildren(...matches.map((item, index) => el("button", {
+      id: `${list.id}_${index}`, class: "suggestion", type: "button", role: "option", tabindex: "-1",
+      "aria-selected": "false", onpointerdown: e => e.preventDefault(), onclick: () => {
+        input.value = item.text;
+        onChange(item.text);
+        setOpen(false);
+      }
+    }, el("strong", {text: item.label}), el("small", {text: item.hint || item.text}))));
+    setOpen(matches.length > 0);
+  }
+
+  input.addEventListener("focus", () => show(""));
+  input.addEventListener("input", () => show(input.value));
+  input.addEventListener("blur", () => setOpen(false));
+  input.addEventListener("keydown", e => {
+    if (e.isComposing) return;
+    if (e.key === "Escape" && !list.hidden){
+      e.preventDefault();
+      setOpen(false);
+    } else if (e.key === "Enter" && !list.hidden && active >= 0){
+      e.preventDefault();
+      list.children[active].click();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp"){
+      if (list.hidden && e.altKey && e.key === "ArrowDown") show("");
+      if (list.hidden) return;
+      e.preventDefault();
+      if (active >= 0) list.children[active].setAttribute("aria-selected", "false");
+      const count = list.children.length;
+      active = e.key === "ArrowDown" ? (active + 1) % count : (active > 0 ? active - 1 : count - 1);
+      const option = list.children[active];
+      option.setAttribute("aria-selected", "true");
+      input.setAttribute("aria-activedescendant", option.id);
+      option.scrollIntoView({block: "nearest"});
+    }
+  });
+  return el("div", {}, input, list);
+}
+
 /* Fields under each file. Default: one optional note. A field with suggestions gets a dropdown list. */
 const NOTE_FIELD = [{id: "note", placeholder: "Mô tả file này (không bắt buộc)"}];
 let LISTS = 0;
 function fileFieldInputs(f, defs){
   return defs.map(d => {
-    const input = textInput(f[d.id], v => { f[d.id] = v; }, {placeholder: d.placeholder, multiline: d.multiline});
+    const change = v => { f[d.id] = v; };
+    const input = d.suggest_from ? descriptionInput(f[d.id], change, d, () => f.screen) : textInput(f[d.id], change, d);
     const wrap = el("div", {}, d.label ? el("div", {class: "flabel", text: d.label}) : null, input);
     if (d.suggestions && d.suggestions.length){
       const id = "list_" + (++LISTS);
@@ -116,13 +212,14 @@ function fileFieldInputs(f, defs){
 }
 
 /* Files: a list of {path, name, note, ...}. accept and the question id decide where uploads go. */
-function filesWidget(list, where, hint, fieldDefs){
+function filesWidget(list, where, hint, fieldDefs, label){
   const defs = fieldDefs || NOTE_FIELD;
   const box = el("div", {class: "files"});
   const listBox = el("div", {class: "files"});
   const picker = el("input", {type: "file", multiple: true, class: "hidden",
     accept: ".png,.jpg,.jpeg,.webp,.psd,.zip"});
-  const drop = el("div", {class: "drop", tabindex: "0", role: "button"}, hint || "Kéo thả file vào đây hoặc bấm để chọn");
+  const drop = el("button", {class: "drop", type: "button", "aria-label": label},
+    label ? el("strong", {text: label}) : null, hint || "Kéo thả file vào đây hoặc bấm để chọn");
   function draw(){
     listBox.replaceChildren(...list.map((f, i) => el("div", {class: fieldDefs ? "file big" : "file"},
       IMG.test(f.path) ? el("img", {src: fileUrl(f.path), alt: ""}) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
@@ -132,7 +229,7 @@ function filesWidget(list, where, hint, fieldDefs){
   }
   async function send(files){
     for (const file of files){
-      UPLOADS++; status("Đang tải " + file.name + "…");
+      UPLOADS++; refresh(); status("Đang tải " + file.name + "…");
       try {
         const r = await fetch(`/upload?where=${encodeURIComponent(where)}&name=${encodeURIComponent(file.name)}`,
           {method: "POST", body: file});
@@ -146,7 +243,6 @@ function filesWidget(list, where, hint, fieldDefs){
   }
   picker.addEventListener("change", () => { send([...picker.files]); picker.value = ""; });
   drop.addEventListener("click", () => picker.click());
-  drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " "){ e.preventDefault(); picker.click(); } });
   drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
   drop.addEventListener("dragleave", () => drop.classList.remove("over"));
   drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]); });
@@ -155,10 +251,11 @@ function filesWidget(list, where, hint, fieldDefs){
   return box;
 }
 
-function fieldsWidget(defs, store){
+function fieldsWidget(defs, store, opts = {}){
   return el("div", {class: defs.length === 2 && defs.every(d => d.type === "number") ? "row2" : "fields"},
     defs.map(d => el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
-      textInput(store[d.id], v => { store[d.id] = v; }, {multiline: d.multiline, number: d.type === "number", placeholder: d.placeholder}))));
+      descriptionInput(store[d.id], v => { store[d.id] = v; }, {...d, number: d.type === "number",
+        suggest_from: opts.suggest_from, suggest_context: opts.suggest_context, area: d.id}))));
 }
 
 /* Extras under a chosen option: fields, a description and files. */
@@ -166,8 +263,9 @@ function optionExtras(q, opt, entry){
   const x = Object.assign({}, q.option_extras || {}, opt);
   const box = el("div", {class: "extra"});
   if (x.fields){ entry.fields = entry.fields || {}; box.append(fieldsWidget(x.fields, entry.fields)); }
-  if (x.describe) box.append(textInput(entry.note, v => { entry.note = v; }, {multiline: true, placeholder: x.describe_placeholder || "Mô tả"}));
-  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn")); }
+  if (x.describe) box.append(descriptionInput(entry.note, v => { entry.note = v; },
+    {...x, multiline: true, placeholder: x.describe_placeholder || "Mô tả"}, () => entry.choice === "other" ? entry.label : entry.choice));
+  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, x.attach_label)); }
   return box.childElementCount ? box : null;
 }
 const slug = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "other";
@@ -231,8 +329,8 @@ function renderQuestion(q){
             textInput(entry.label, v => { entry.label = v; }, {placeholder: o.placeholder}),
             el("button", {class: "x", type: "button", title: "Bỏ", "aria-label": "Bỏ", onclick: () => {
               state.value = state.value.filter(e => e !== entry); rerender(); }}, "×")));
-          if (o.describe && !(q.option_extras || {}).describe) box.append(textInput(entry.note, v => { entry.note = v; },
-            {multiline: true, placeholder: o.describe_placeholder || "Mô tả"}));
+          if (o.describe && !(q.option_extras || {}).describe) box.append(descriptionInput(entry.note, v => { entry.note = v; },
+            {...o, multiline: true, placeholder: o.describe_placeholder || "Mô tả"}, () => entry.label));
           const extra = optionExtras(q, {value: "other"}, entry);
           if (extra){ extra.style.marginLeft = "0"; box.append(extra); }
           opts.append(box);
@@ -246,8 +344,8 @@ function renderQuestion(q){
         const row = el("div", {class: "opt"}, el("label", {}, input, el("div", {text: o.label})));
         if (chosen){
           const extra = el("div", {class: "extra"}, textInput(chosen.label, v => { chosen.label = v; }, {placeholder: o.placeholder}));
-          if (o.describe) extra.append(textInput(chosen.note, v => { chosen.note = v; },
-            {multiline: true, placeholder: o.describe_placeholder || "Mô tả"}));
+          if (o.describe) extra.append(descriptionInput(chosen.note, v => { chosen.note = v; },
+            {...o, multiline: true, placeholder: o.describe_placeholder || "Mô tả"}, () => chosen.label));
           const more = optionExtras(q, {value: "other"}, chosen);
           if (more) extra.append(...more.childNodes);
           row.append(extra);
@@ -258,14 +356,14 @@ function renderQuestion(q){
     body.append(opts);
   } else if (q.type === "text"){
     if (state.value === undefined) state.value = "";
-    body.append(el("div", {class: "fields"}, textInput(state.value, v => { state.value = v; }, {multiline: q.multiline, placeholder: q.placeholder || "Câu trả lời"})));
+    body.append(el("div", {class: "fields"}, descriptionInput(state.value, v => { state.value = v; }, {...q, placeholder: q.placeholder || "Câu trả lời"})));
   } else if (q.type === "number"){
     if (state.value === undefined || state.value === null) state.value = q.default ?? null;
     body.append(el("div", {class: "fields"}, textInput(state.value, v => { state.value = v; }, {number: true, min: q.min, max: q.max})));
   } else if (q.type === "fields"){
     state.value = state.value || {};
     const defs = q.fields_by ? (q.fields_by[CTX[q.fields_by.context]] || []) : q.fields;
-    body.append(fieldsWidget(defs, state.value));
+    body.append(fieldsWidget(defs, state.value, q));
   } else if (q.type === "files"){
     if (!Array.isArray(state.value)) state.value = [];
     body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint, q.file_fields)));
@@ -276,7 +374,7 @@ function renderQuestion(q){
   }
   if (q.attach){
     state.files = state.files || [];
-    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn")));
+    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, q.attach_label)));
   }
   card.append(el("div", {class: "err", text: "Câu này cần trả lời."}));
   return card;

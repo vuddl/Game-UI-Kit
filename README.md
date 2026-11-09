@@ -30,7 +30,7 @@ Sau đó mở một phiên Codex mới và gõ `$setup`. Xuất PSD sửa đư�
 | `$reset` | Xoá hết những gì lệnh đang làm đã tạo, rồi làm lại lệnh đó từ đầu. Reset khi đang ở `$setup` thì xoá luôn setup |
 | `$info` | Thông báo những gì đã lưu: setup (kích thước, hướng màn, thể loại, gameplay), câu trả lời từng màn của wireframe và mockup, ảnh kết quả, file export, và lệnh đang làm tới bước nào. Không thay đổi gì |
 
-Codex luôn trả lời bằng tiếng Việt.
+Codex trả lời bằng tiếng Việt. Nội dung hiển thị trên wireframe, concept, mockup và prototype dùng tiếng Anh.
 
 Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 
@@ -47,7 +47,7 @@ Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 5. Làm full màn: form chọn nhiều màn cùng lúc, mỗi màn có mô tả và ảnh ref riêng, thêm yêu cầu chung cho tất cả.
 6. Kết quả: ảnh wireframe PNG từng màn, và demo bấm thử nếu có màn chọn prototype.
 
-Wireframe được dựng bằng HTML rồi chụp bằng Edge hoặc Chrome chạy ngầm: thẻ bo góc, icon, chữ to nhỏ rõ ràng, thanh tiến độ, thanh điều hướng có tab đang chọn, chữ tiếng Việt thật. Không ghi luồng kiểu "gem > shop" lên màn; luồng chỉ được nối khi bạn chọn làm prototype.
+Wireframe được dựng bằng HTML rồi chụp bằng Edge hoặc Chrome chạy ngầm. Màn có thẻ bo góc, icon, chữ dễ đọc, thanh tiến độ và thanh điều hướng có tab đang chọn. Các liên kết chuyển màn được thêm khi bạn chọn làm prototype.
 
 ## Luồng `$mockup`
 
@@ -69,6 +69,10 @@ Form mở trên trình duyệt qua localhost. Form có câu chọn một hoặc 
 File đính kèm lưu ở `inputs/` trong kit. File trùng nội dung chỉ lưu một lần, file ZIP được giải nén, file bạn bỏ đi thì bị xoá, nên không sinh rác mỗi lần hỏi.
 
 Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Câu hỏi của từng form nằm ở `game-ui-kit/forms/*.json`, sửa file đó để đổi câu hỏi. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
+
+Các ô mô tả gameplay, art style và màn hình có danh sách gợi ý từ UI KIT FILTER. Chọn một gợi ý để điền rồi chỉnh sửa trực tiếp trong ô. Form đọc dữ liệu đã lưu trong `game-ui-kit/references/form_suggestions.json`.
+
+Nhóm **Mẫu bạn đã dùng** đọc các brief Game UI Kit đã gửi trên máy để gợi ý theo thể loại game, art style hoặc màn và vùng tương ứng. Mẫu dùng trong nhiều bộ UI được ưu tiên. Chỉ mục lịch sử lưu đường dẫn tới các bộ UI trên máy, còn nội dung vẫn nằm trong brief của từng bộ.
 
 ## Kết quả
 

@@ -1,6 +1,6 @@
 # UI kit standard
 
-The base set a new kit must have, and the names to use. It is the user's house standard, so it overrides generic naming. Names are lowercase with `_`, inside the family folder shown, such as `buttons/btn_yellow`.
+Use the base set and naming conventions from the **Yêu cầu thành phần** column in the [UI KIT tab](https://docs.google.com/spreadsheets/d/1zZy5cT3bZbI8JQrbhKSgvPdclbgrJoAIcFF5YrATkug/edit?gid=712893616#gid=712893616). Names are lowercase with `_`, inside the family folder shown, such as `buttons/btn_yellow`.
 
 ## Base set
 
@@ -20,6 +20,10 @@ The base set a new kit must have, and the names to use. It is the user's house s
 
 **Common icons:** `icon_settings`, `icon_sound_on`, `icon_sound_off`, `icon_music_on`, `icon_music_off`, `icon_vibrate_on`, `icon_vibrate_off`, `icon_noti`, `icon_info`, `icon_play`, `icon_pause`, `icon_replay`, `icon_tick`, `icon_lock`, `icon_unlock`, `icon_star`, `icon_watch_ads`, `icon_remove_ads`, `icon_gifts`, `icon_next`, `icon_add`, `icon_back`, `icon_time`, `icon_close`, `icon_edit`, `icon_hand_tutorial`, `icon_rank_1`, `icon_rank_2`, `icon_rank_3`, `icon_cup_bronze`, `icon_cup_silver`, `icon_cup_gold`.
 
+Keep a single upright sprite when icon directions differ only by a horizontal flip, vertical flip or rotation. For example, reuse `icon_next` for Back if both use the same arrow artwork. Keep `icon_back` when Back uses a different design, such as a hooked return arrow. Keep separately drawn on/off, lock/unlock and tier icons where the artwork differs.
+
+Trim generated sprites to the artwork and align both canvas dimensions to multiples of four. Keep the 256 × 256 shape and looping pattern canvases, the 160 × 160 reward frame, and matching canvas sizes for each loading fill and track.
+
 Shapes are plain geometry, so draw them with the script rather than `image_gen`:
 
 ```bash
@@ -32,4 +36,4 @@ Screen-specific parts and art follow the same pattern, `<function>_<description>
 
 ## States
 
-The normal state has no suffix: `btn_yellow`. The `states` command derives `btn_yellow_pressed` and `btn_yellow_disabled` from it. A state that needs a different drawing, such as `btn_yellow_locked`, is generated and named the same way. Older kits that end their base names in `_normal` still work.
+The normal button has a bare name such as `btn_yellow`. Use it for press feedback in the game. The `states` command derives `btn_yellow_disabled`. Generate a separate state such as `btn_yellow_locked` when the art differs. Older kits with `_normal` or existing `_pressed` files still work.

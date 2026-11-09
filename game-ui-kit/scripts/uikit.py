@@ -26,7 +26,7 @@ from pathlib import Path
 
 try:
     import numpy as np
-    from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont
+    from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 except ImportError as exc:
     sys.exit(f"Missing dependency: {exc.name}. Install with: py -3 -m pip install pillow numpy")
 
@@ -36,7 +36,8 @@ import psd_recipe as recipes  # noqa: E402
 NAME_RE = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)*$")
 STATE_RE = re.compile(r"_(normal|hover|pressed|selected|disabled|locked)$")
 ALPHA_FLOOR = 8
-PAD = 2
+LOADING_BAR_RE = re.compile(r"^(bars/loading_bar_[a-z0-9_]+)_[ab]$")
+REWARD_FRAME_SIZE = (160, 160)
 
 
 def die(code: str, message: str, status: int = 2):
@@ -206,6 +207,31 @@ def write_labeled(kit: Path, sheet: Path, rgba: np.ndarray, boxes: list[dict]) -
     return out
 
 
+def aligned_dimension(value: int) -> int:
+    return (value + 3) // 4 * 4
+
+
+def center_on_canvas(sprite: Image.Image, size: tuple[int, int]) -> Image.Image:
+    canvas = Image.new("RGBA", size)
+    canvas.paste(sprite, ((size[0] - sprite.width) // 2, (size[1] - sprite.height) // 2))
+    return canvas
+
+
+def icon_signature(sprite: Image.Image):
+    """Identify exact icon artwork across transparent padding, flips and quarter turns."""
+    bounds = sprite.getchannel("A").getbbox()
+    if bounds is None:
+        return None
+    sprite = sprite.crop(bounds)
+    sprite = Image.alpha_composite(Image.new("RGBA", sprite.size), sprite)
+    signatures = []
+    for _ in range(4):
+        for view in (sprite, ImageOps.mirror(sprite)):
+            signatures.append((view.size, hashlib.sha256(view.tobytes()).digest()))
+        sprite = sprite.transpose(Image.Transpose.ROTATE_90)
+    return min(signatures)
+
+
 def cmd_slice(args) -> int:
     kit, sheet = Path(args.kit), Path(args.sheet)
     if not sheet.is_absolute() and not sheet.exists():
@@ -247,20 +273,53 @@ def cmd_slice(args) -> int:
 
     manifest = load_manifest(kit)
     h, w = mask.shape
+    sprites = []
+    bar_canvases = {}
     for name, box, target in zip(names, boxes, targets):
         x0, y0, x1, y1 = box["x0"], box["y0"], box["x1"], box["y1"]
         crop = rgba[y0:y1 + 1, x0:x1 + 1].copy()
         crop[labels[y0:y1 + 1, x0:x1 + 1] != box["index"]] = 0
-        padded = np.zeros((crop.shape[0] + PAD * 2, crop.shape[1] + PAD * 2, 4))
-        padded[PAD:-PAD, PAD:-PAD] = crop
+        sprite = Image.fromarray(crop.astype(np.uint8), "RGBA")
+        canvas = (aligned_dimension(sprite.width), aligned_dimension(sprite.height))
+        if name in ("rewards/reward_normal", "rewards/reward_special"):
+            canvas = REWARD_FRAME_SIZE
+            sprite = ImageOps.contain(sprite, canvas, Image.Resampling.LANCZOS)
+        bar = LOADING_BAR_RE.fullmatch(name)
+        bar_group = bar[1] if bar else None
+        if bar_group:
+            other_width, other_height = bar_canvases.get(bar_group, (0, 0))
+            bar_canvases[bar_group] = max(canvas[0], other_width), max(canvas[1], other_height)
+        sprites.append((name, box, target, sprite, canvas, bar_group))
+
+    if args.canonical_icons:
+        new_icons = [(name, sprite) for name, _, _, sprite, _, _ in sprites if name.startswith("icons/")]
+        signatures = {}
+        if new_icons:
+            for name, entry in manifest["elements"].items():
+                if not name.startswith("icons/") or name in names or entry.get("derived_from"):
+                    continue
+                path = kit / entry["file"]
+                if path.is_file():
+                    with Image.open(path) as image:
+                        signature = icon_signature(image.convert("RGBA"))
+                    if signature is not None:
+                        signatures.setdefault(signature, name)
+            for name, sprite in new_icons:
+                signature = icon_signature(sprite)
+                other = signatures.setdefault(signature, name)
+                if other != name:
+                    die("DUPLICATE_ICON", f"{name} matches {other} after a flip or rotation. Keep one canonical sprite.")
+
+    for name, box, target, sprite, canvas, bar_group in sprites:
+        canvas = bar_canvases.get(bar_group, canvas)
         target.parent.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(padded.astype(np.uint8), "RGBA").save(target)
+        center_on_canvas(sprite, canvas).save(target)
         manifest["elements"][name] = {
             "file": target.relative_to(kit).as_posix(),
-            "width": padded.shape[1], "height": padded.shape[0],
-            "sheet": sheet.name, "sheet_box": [x0, y0, x1, y1],
+            "width": canvas[0], "height": canvas[1],
+            "sheet": sheet.name, "sheet_box": [box[k] for k in ("x0", "y0", "x1", "y1")],
             "key_color": None if key is None else to_hex(key),
-            "touches_sheet_edge": x0 == 0 or y0 == 0 or x1 == w - 1 or y1 == h - 1,
+            "touches_sheet_edge": box["x0"] == 0 or box["y0"] == 0 or box["x1"] == w - 1 or box["y1"] == h - 1,
             "nine_slice": None,
         }
     save_manifest(kit, manifest)
@@ -754,11 +813,10 @@ def cmd_states(args) -> int:
         source = np.asarray(Image.open(kit / entry["file"]).convert("RGBA")).astype(float)
         rgb, alpha = source[..., :3], source[..., 3:]
         gray = (rgb * [0.299, 0.587, 0.114]).sum(axis=2, keepdims=True)
-        variants = {
-            "pressed": np.concatenate([rgb * 0.8, alpha], axis=2),
-            "disabled": np.concatenate([rgb * 0.2 + gray * 0.8, alpha], axis=2),
-        }
         base = name[: -len("_normal")] if name.endswith("_normal") else name
+        variants = {"disabled": np.concatenate([rgb * 0.2 + gray * 0.8, alpha], axis=2)}
+        if not (name.startswith("buttons/") or base.rsplit("/", 1)[-1].startswith("btn_")):
+            variants["pressed"] = np.concatenate([rgb * 0.8, alpha], axis=2)
         for state, pixels in variants.items():
             derived = f"{base}_{state}"
             target = kit / "elements" / f"{derived}.png"
@@ -1549,7 +1607,7 @@ def wireframe_html(layout: dict, manifest: dict) -> str:
             inner.append(f'<span class="dot">{badge}</span>')
         parts.append(f'<div class="{classes}" style="{";".join(style)}">{"".join(inner)}</div>')
     css = WIRE_CSS.replace("__W__", str(width)).replace("__H__", str(height)).replace("__U__", f"{u:.3f}").replace("__BG__", bg)
-    return (f'<!doctype html><html lang="vi"><head><meta charset="utf-8"><style>{css}</style></head>'
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><style>{css}</style></head>'
             f'<body>{"".join(parts)}</body></html>')
 
 
@@ -1652,7 +1710,7 @@ def cmd_wireframe(args) -> int:
 
 
 DEMO_HTML = """<!doctype html>
-<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
@@ -1667,7 +1725,7 @@ main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
 .hot{position:absolute;background:transparent;border:0;border-radius:4px;padding:0}
 .show .hot{outline:2px solid #4c8dff;background:#4c8dff33}
 </style></head><body>
-<header><span id="name"></span><button id="back">Quay lại</button><button id="restart">Từ đầu</button><button id="hints">Hiện vùng bấm</button></header>
+<header><span id="name"></span><button id="back">Back</button><button id="restart">Restart</button><button id="hints">Show tap areas</button></header>
 <main><div id="stage"><img id="shot" alt=""></div></main>
 <script>
 const DATA=__DATA__;
@@ -3276,6 +3334,8 @@ def cmd_qa(args) -> int:
     errors += [f"{n}: planned but not produced" for n in sorted(expected - set(manifest["elements"]))]
 
     groups: dict[str, list[tuple[str, tuple[int, int]]]] = {}
+    loading_bars = {}
+    icons = {}
     for name, entry in manifest["elements"].items():
         path = kit / entry["file"]
         if not path.exists():
@@ -3283,6 +3343,19 @@ def cmd_qa(args) -> int:
             continue
         img = Image.open(path).convert("RGBA")
         pixels = np.asarray(img).astype(float)
+        if entry.get("sheet") and any(length % 4 for length in img.size):
+            warnings.append(f"{name}: sprite canvas {img.width}x{img.height} is not aligned to multiples of 4")
+        if name.startswith("backgrounds/pattern_") and img.size != (256, 256):
+            warnings.append(f"{name}: looping patterns need a 256x256 canvas")
+        bar = LOADING_BAR_RE.fullmatch(name)
+        if bar:
+            loading_bars.setdefault(bar[1], {})[name] = img.size
+        if name.startswith("icons/") and entry.get("sheet") and not entry.get("derived_from"):
+            signature = icon_signature(img)
+            if signature is not None:
+                other = icons.setdefault(signature, name)
+                if other != name:
+                    warnings.append(f"{name}: same artwork as {other} after a flip or rotation; keep one canonical sprite")
         if min(img.size) < args.min_size:
             warnings.append(f"{name}: small ({img.width}x{img.height}), under {args.min_size} px")
         if entry.get("touches_sheet_edge"):
@@ -3307,6 +3380,10 @@ def cmd_qa(args) -> int:
     for group, members in groups.items():
         if len({size for _, size in members}) > 1:
             warnings.append(f"{group}: state sizes differ {dict(members)}")
+
+    for group, members in loading_bars.items():
+        if len(set(members.values())) > 1:
+            warnings.append(f"{group}: fill and track need the same canvas {members}")
 
     comparable = [n for n, e in manifest["elements"].items()
                   if not e.get("imported_from") and not e.get("derived_from") and not n.endswith("_disabled")]
@@ -3355,6 +3432,7 @@ def main() -> int:
     p.add_argument("--tolerance", type=int, default=24, help="Distance from key color treated as background")
     p.add_argument("--ramp", type=int, default=60, help="Distance over which edges fade to opaque")
     p.add_argument("--force", action="store_true", help="Replace existing elements")
+    p.add_argument("--canonical-icons", action="store_true", help="Reject exact flipped or rotated copies of icons")
     p.set_defaults(func=cmd_slice)
 
     p = commands.add_parser("import", help="Add existing loose PNG or WebP sprites to the kit, unchanged")
@@ -3410,7 +3488,7 @@ def main() -> int:
     p.add_argument("--min-share", type=float, default=0.08, help="Minimum stretch band as a share of size")
     p.set_defaults(func=cmd_nineslice)
 
-    p = commands.add_parser("states", help="Derive pressed and disabled from normal-state elements")
+    p = commands.add_parser("states", help="Derive disabled from normal-state buttons and states for other elements")
     p.add_argument("kit")
     p.add_argument("--match", action="append", required=True)
     p.add_argument("--force", action="store_true", help="Replace existing derived files")
