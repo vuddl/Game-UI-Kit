@@ -1,13 +1,13 @@
 {
   "id": "full",
-  "title": "Làm full màn",
-  "intro": "Chọn các màn còn lại để làm cùng lúc. Các màn dùng theo setup của màn đầu tiên.",
+  "title": "Làm nhiều màn cùng lúc",
+  "intro": "Các màn dùng chung thiết lập của màn đầu tiên. Mỗi màn tập trung vào bố cục và tính năng chính.",
   "questions": [
     {
       "id": "screens",
       "type": "multi",
-      "title": "Tạo thêm hàng loạt các màn hình khác",
-      "hint": "Chọn được nhiều màn. Mỗi màn có thể viết mô tả và thêm ảnh ref.",
+      "title": "Bạn muốn làm những màn nào?",
+      "hint": "Chọn các màn muốn làm trong lượt này. Bạn có thể thêm mô tả và ảnh tham chiếu cho từng màn.",
       "required": true,
       "options_from": "kit:screens+catalog:screens",
       "option_extras": {"describe": true, "attach": true, "suggest_from": "screens"},

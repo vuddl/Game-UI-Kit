@@ -437,9 +437,20 @@ async function submit(){
     const r = await fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({answers})});
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
+    const timer = el("p", {class: "hint", role: "timer", text: "Tab sẽ tự đóng sau 5 giây."});
     app.replaceChildren(el("div", {class: "card done"}, el("h2", {text: "Đã gửi"}),
-      el("p", {class: "intro", text: "Codex sẽ tự làm tiếp. Có thể đóng tab này."}),
+      el("p", {class: "intro", text: "Codex sẽ tự làm tiếp."}), timer,
       el("p", {class: "hint", text: "Nếu sau một lúc Codex vẫn đứng im, gõ “xong” trong Codex."})));
+    let seconds = 5;
+    const countdown = setInterval(() => {
+      seconds -= 1;
+      timer.textContent = `Tab sẽ tự đóng sau ${seconds} giây.`;
+    }, 1000);
+    setTimeout(() => {
+      clearInterval(countdown);
+      timer.textContent = "Bạn có thể đóng tab này.";
+      window.close();
+    }, 5000);
   } catch (e){ sendBtn.disabled = false; status("Không gửi được: " + e.message); }
 }
 

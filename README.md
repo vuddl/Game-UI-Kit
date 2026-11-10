@@ -25,8 +25,8 @@ Sau đó mở một phiên Codex mới và gõ `$setup`. Xuất PSD sửa đư�
 | Lệnh | Tác dụng |
 |---|---|
 | `$setup` | Form định hình game: màn dọc, ngang hay tự nhập kích thước; thể loại game; gameplay. Chưa setup thì các lệnh khác không chạy |
-| `$wireframe` | Làm wireframe từng màn bằng form, hoặc làm full các màn còn lại cùng lúc. Kết quả là ảnh PNG |
-| `$mockup` | Làm UI visual mockup từng màn bằng form, hoặc làm full. Sau đó hỏi export PSD, PNG, kèm JSON ghép Unity |
+| `$wireframe` | Làm wireframe từng màn hoặc nhiều màn cùng lúc. Kết quả là ảnh PNG |
+| `$mockup` | Làm UI visual mockup từng màn hoặc nhiều màn cùng lúc. Khi hoàn tất, Codex hỏi có xuất PSD, PNG và JSON ghép Unity không |
 | `$reset` | Xoá hết những gì lệnh đang làm đã tạo, rồi làm lại lệnh đó từ đầu. Reset khi đang ở `$setup` thì xoá luôn setup |
 | `$info` | Thông báo những gì đã lưu: setup (kích thước, hướng màn, thể loại, gameplay), câu trả lời từng màn của wireframe và mockup, ảnh kết quả, file export, và lệnh đang làm tới bước nào. Không thay đổi gì |
 
@@ -41,18 +41,17 @@ Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 ## Luồng `$wireframe`
 
 1. Form tạo wireframe cho một màn: màn gì, chức năng, mô tả từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), có tạo prototype không, tạo mấy option.
-2. Codex hiện ảnh wireframe, rồi hỏi: **Sửa chữa tiếp**, **Làm full màn** hay **Tiếp tục**.
-3. Sửa chữa tiếp: mở form sửa. Tick các bản cần sửa (có ảnh xem trước), ghi ý sửa cho từng bản, gắn ảnh minh họa kèm ghi chú.
-4. Tiếp tục: Codex hiện lại ảnh các màn đã làm và hỏi **Có muốn làm thêm màn hình khác không?** Có thì mở form cho màn tiếp theo.
-5. Làm full màn: form chọn nhiều màn cùng lúc, mỗi màn có mô tả và ảnh ref riêng, thêm yêu cầu chung cho tất cả.
-6. Kết quả: ảnh wireframe PNG từng màn, và demo bấm thử nếu có màn chọn prototype.
+2. Sau khi hiện ảnh, Codex đưa ra ba lựa chọn **Sửa chữa tiếp**, **Tiếp tục** và **Hoàn tất**.
+3. **Sửa chữa tiếp** mở form sửa có ảnh xem trước. Bạn chọn các bản cần sửa, ghi yêu cầu và đính kèm ảnh minh họa cho từng bản.
+4. **Tiếp tục** mở hai lựa chọn. **Làm nhiều màn · Ít chi tiết hơn** mở form chọn nhiều màn với mô tả và ảnh tham chiếu riêng. **Làm 1 màn · Chi tiết hơn** mở form riêng cho màn tiếp theo.
+5. **Hoàn tất** trả ảnh PNG từng màn và demo bấm thử nếu bạn chọn tạo prototype.
 
 Wireframe được dựng bằng HTML rồi chụp bằng Edge hoặc Chrome chạy ngầm. Màn có thẻ bo góc, icon, chữ dễ đọc, thanh tiến độ và thanh điều hướng có tab đang chọn. Các liên kết chuyển màn được thêm khi bạn chọn làm prototype.
 
 ## Luồng `$mockup`
 
 1. Form tạo mockup: add wireframe (PNG, ZIP...), mỗi file là một màn, có ô **Tên màn** (gợi ý thả xuống, để trống thì Codex tự đoán) và ô **Mô tả màn**. Wireframe làm từ `$wireframe` được điền sẵn. Tiếp theo: có UI kit không (có: add kit; không: add ảnh reference hoặc tự sáng tạo), màu, sáng hay dark theme, UI style (có reference thì các câu này không bắt buộc, để trống thì lấy theo reference), có background sẵn không, tạo mấy option.
-2. Codex hiện mockup, rồi hỏi: Sửa chữa tiếp (form sửa có gắn ảnh), Làm full màn hay Tiếp tục, như `$wireframe`. Làm full màn dùng setup của màn đầu tiên.
+2. Sau khi hiện mockup, Codex dùng cùng menu **Sửa chữa tiếp**, **Tiếp tục** và **Hoàn tất** như `$wireframe`. Khi chọn làm nhiều màn, các màn dùng chung thiết lập của màn đầu tiên.
 3. Kết quả: ảnh mockup demo. Codex hỏi **Export không?**. Không thì hỏi có sửa tiếp không.
 4. Form export: chọn PSD, PNG hoặc cả hai, chọn các option muốn xuất (có ảnh xem trước), và với PSD thì hỏi lại mỗi lần: background vẽ lại hay để một layer ảnh. Kết quả luôn kèm JSON hướng dẫn ghép trong Unity.
 
@@ -80,12 +79,8 @@ Mọi thứ nằm trong `ui_art/<tên_game>/`: wireframe ở `preview/wireframes
 
 ## File PSD
 
-Mục tiêu: bạn sửa lại được mọi layer, effect và ảnh trong file, và dùng file làm bản gốc.
+- Button, popup, panel, frame và các component tái sử dụng dùng Shape Layers và Layer Effects chỉnh được trong Photoshop. Bản dựng phải đạt ít nhất 95% độ giống demo đã chốt. Codex kiểm tra bằng ảnh render từ Photoshop.
+- Icon và decor phức tạp, cụm minh họa và VFX giữ ảnh nguồn chất lượng cao trong Smart Object trước khi thu nhỏ. Icon silhouette một màu hoặc hình đơn giản dùng shape và effect. Ảnh trong khung giữ nguyên ảnh vuông hoặc chữ nhật và clip vào shape riêng. Chữ UI là text layer.
+- Khi giao component tái sử dụng, Codex tạo thêm `export/psd/components.psd`. Mỗi sprite có canvas trong suốt cắt sát, chiều rộng và chiều cao chia hết cho 4, và được kiểm tra 9-slice nếu cần co giãn.
 
-- **Vẽ lại bằng shape và layer effect.** Trước khi xuất, mỗi sprite UI được dựng lại theo một "recipe" (`style/recipes/<element>.json`): các lớp fill, stroke, highlight, bóng là shape riêng, với Stroke, Bevel & Emboss, Drop/Inner Shadow, Glow, Gradient/Color Overlay thật, fill opacity, blend mode và clipping mask. Hình chữ nhật và ellipse là live shape, sửa được kích thước và bo góc trong Properties. Ví dụ một khung: group `frame_activity_home` gồm `fill_rounded_rectangle` (Bevel & Emboss), group `stroke` (Bevel & Emboss) chứa `stroke_rounded_rectangle` (fill 0%, Stroke), và `highlight_top_left`.
-- **So với ảnh gốc.** `uikit.py recipe` tự đoán recipe đầu tiên, rồi vẽ ảnh so sánh ảnh gốc, bản dựng lại và chỗ khác ở `preview/recipes/`. Codex chỉnh recipe đến khi khớp.
-- **Tên layer** theo mẫu `(chức năng)_(mô tả)_(màu)_(màn)`, màu và màn có thể bỏ, như `icon_settings`, `button_normal_blue`, `bg_character_battle`.
-- **Chữ là text layer thật.** Font chưa cài thì dùng Arial và báo lại.
-- **Ảnh** (nhân vật, cảnh, chi tiết phức tạp) là smart object giữ ảnh gốc kích thước lớn rồi mới thu nhỏ, phóng lại không vỡ.
-- **Group theo quan hệ cha con:** popup chứa panel, panel chứa nút, nút chứa shape, icon và chữ của nó.
-- Photoshop không cho script tạo pattern mới, nên bề mặt có hoa văn được vẽ bằng shape hoặc để một layer ảnh clip vào shape, và Codex sẽ báo.
+[Quy tắc dựng và xuất Photoshop](game-ui-kit/references/photoshop.md)

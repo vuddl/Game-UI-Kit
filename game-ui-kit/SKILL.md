@@ -112,12 +112,15 @@ Wireframes are clean, readable screens drawn from the layout in a headless brows
 
 1. **Form for one screen.** Open the `wireframe` form with `--out briefs/wireframe/_new.json`. Rename the file to `briefs/wireframe/<screen>.json`, using its `screen`, replacing any earlier one.
 2. **Draw it.** Write `options` layouts as `mockups/<screen>__v1.json`, `__v2` and so on, as Wireframe layouts describes, then run `uikit.py wireframe ui_art/<kit> --screen <screen>`. View each image in `preview/wireframes/` and show them. Make the options genuinely different and say in one line how.
-3. **Ask, as a choice:**
-   - **Sửa chữa tiếp:** step 3a.
-   - **Làm full màn:** step 4.
-   - **Tiếp tục:** show every wireframe made so far again, then ask, as a choice, "Có muốn làm thêm màn hình khác không?" with **Có, làm màn tiếp** and **Không, xong rồi**. Có goes back to step 1; Không goes to step 5.
+3. **After showing the result, offer three choices.**
+   - **Sửa chữa tiếp** opens the revision form in step 3a.
+   - **Tiếp tục** opens the two-choice menu in step 3b.
+   - **Hoàn tất** goes to the result in step 5.
 3a. **Revise.** Open the `revise` form with `--out briefs/revise.json --kind wireframes --screens <screen>`, listing every screen just shown, comma-separated. It shows each version with its image; the user ticks the ones to change, writes the change for each, and may attach images with a note each, such as "nút bo tròn như ảnh này". Its record lists `versions`, each with `layout`, `change` and `files`, plus a `common` answer for all. View every attached image, change only the ticked layouts, draw and show them again, then ask step 3 again.
-4. **All the other screens at once.** Open the `full` form with `--out briefs/wireframe/full.json`. Draw every screen it picks with the first screen's setup, its options count included, using each screen's note and reference files and the shared request and files. Then step 5.
+3b. **Continue.** Ask "Bạn muốn làm tiếp theo cách nào?" with exactly these two choices.
+   - **Làm nhiều màn · Ít chi tiết hơn** opens the batch form in step 4. Focus on each screen's core features and use shared patterns to keep the batch consistent.
+   - **Làm 1 màn · Chi tiết hơn** opens the single-screen form in step 1. Give the next screen a dedicated pass on layout and details before showing it.
+4. **Multiple screens.** Open the `full` form with `--out briefs/wireframe/full.json`. Draw every screen it picks with the first screen's setup, its options count included, using each screen's note and reference files and the shared request and files. Then step 5.
 5. **Result.** Show every wireframe image and list their paths in `preview/wireframes/`. That is the whole result: no layout JSON is shown or delivered. If any screen's form said yes to a prototype, only now add `goto` to the buttons that change screen, run `uikit.py flow ui_art/<kit> --wireframe --start <first screen>` and give the path of `demo/index.html`. Then `state.py done`.
 
 ### Wireframe layouts
@@ -137,13 +140,13 @@ Write layouts as [references/mockup.md](references/mockup.md) describes, at the 
    - Then rename the file to `briefs/mockup/<first screen>.json`, and take every screen in the list through the steps below.
 2. **Prepare.** Pick the role from the answers and follow it until the sprites the screen needs exist. A submitted `concept_count` authorizes that many initial concept images for the selected brief. On `SUBMITTED`, state the count in a progress update and start generating in the same turn. Reuse the saved approval and concept images when resuming. If an older brief lacks `concept_count`, use any explicit approval already given in the form notes or chat. Ask for generation approval only when the work exceeds the approved scope or count.
 3. **Build the screen.** Start from the wireframe the user attached. When it is one of this kit's `preview/wireframes/` images, start from its layout in `mockups/`; otherwise view the image, set it as the layout's `reference` and measure from it in `keep` mode. Write `options` layouts as `mockups/<screen>__v1.json` and so on, replacing that screen's wireframe layouts. Give the screen the background the form chose, as Backgrounds and art describes, and render it as Mockup describes. Show `preview/mockups/<screen>__v*.png`.
-4. **Ask, as a choice:** **Sửa chữa tiếp**, **Làm full màn** or **Tiếp tục**, exactly as `$wireframe` step 3, with `--kind mockups` for the `revise` form. **Có, làm màn tiếp** opens the `mockup` form again, which asks everything again; use its new answers for those screens.
-5. **All the other screens at once.** Open the `full` form with `--out briefs/mockup/full.json`. Build every screen it picks with the first screen's setup: its kit or style, its background choice and its options count. Use the screen's wireframe in `mockups/` when one exists, otherwise lay it out yourself, with each screen's note and reference files and the shared request.
+4. **After showing the result, use the same choices as `$wireframe` steps 3 and 3b.** **Sửa chữa tiếp** opens `revise` with `--kind mockups`. **Tiếp tục** offers exactly the same two modes. **Làm nhiều màn · Ít chi tiết hơn** goes to step 5, and **Làm 1 màn · Chi tiết hơn** reopens the `mockup` form in step 1 for the next screen. **Hoàn tất** goes to step 6 and the export choice.
+5. **Multiple screens.** Open the `full` form with `--out briefs/mockup/full.json`. Build every screen it picks with the first screen's setup, including its kit or style, background choice and options count. Use the screen's wireframe in `mockups/` when one exists, otherwise lay it out yourself, with each screen's note and reference files and the shared request.
 6. **Result.** Show every mockup image in `preview/mockups/` with its path.
 7. **Ask, as a choice, "Export không?"**
    - **Có:** step 8.
    - **Không:** ask "Sửa tiếp không?". If yes, open the `revise` form as in `$wireframe` step 3a, with `--kind mockups`; make the changes, show the result as in step 6, then ask "Export không?" again. If no, `state.py done`.
-8. **Export.** Open the `export` form with `--out briefs/export.json`, every time, since it also asks again how to treat the background. Its answer gives `formats`, `psd`, `png` or both, `layouts`, such as `home__v2`, and for a PSD `background`, `image` or `redraw`. For a PSD, first rebuild the screens' sprites as shape recipes, as Export step 3 describes. Then run, with one `--layout` per chosen layout and the form's background:
+8. **Export.** Open the `export` form with `--out briefs/export.json`, every time, since it also asks again how to treat the background. Its answer gives `formats`, `psd`, `png` or both, `layouts`, such as `home__v2`, and for a PSD `background`, `image` or `redraw`. For PSD, follow [Photoshop source and export](references/photoshop.md) to choose the right layer type, build the reusable component master, and verify the files. Run the screen export with one `--layout` per chosen layout and the form's background:
 
 ```bash
 py -3 <skill>/scripts/uikit.py psd ui_art/<kit> --layout home__v2 --background image --art image --force
@@ -362,35 +365,10 @@ A `needs_review` 9-slice means no stretchable band was found. Regenerate that el
 
 ## Export
 
-Runs from `$mockup` step 8, on the layouts the export form chose.
+From `$mockup` step 8, export the layouts the form chose. Apply the same Photoshop rules to standalone UI element and component PSD requests, using their approved references.
 
-**Goal:** the user must be able to edit every layer, effect and image of the PSD and keep it as the source file. So UI is rebuilt from named shapes with real layer effects and live text, never pasted as a picture.
-
-**1. Background and art.** The export form asks each time whether the background is redrawn or kept as one image layer; pass its answer as `--background image|redraw`. Characters, environments and other illustration stay image layers, `--art image`, unless the user asks in chat for `--art redraw`. Mark such items `"role": "art"` in the layouts, and UI that a name might mislead `"role": "ui"`.
-
-**2. Name every group and layer** `(function)_(description)_(color)_(screen)`, color and screen optional, such as `icon_settings`, `button_normal_blue`, `bg_character_battle`, `frame_activity_home`, with the prefixes in [references/ui_kit_standard.md](references/ui_kit_standard.md). A sprite imported from the user's kit keeps its original file name as its group's name, the same on every use, so the user's own layer export maps back to one resource; never override that with `name`. Without a `name`, one comes from the element, so review those. Layers inside an element's group are named by what they are, such as `fill_rounded_rectangle`, `stroke_rounded_rectangle`, `highlight_top_left`. Use `group` for screen regions such as `hud_top_left`.
-
-**3. Rebuild the sprites as shape recipes,** before the PSD, for every UI sprite on the chosen layouts, kit sprites included. Follow [references/recipes.md](references/recipes.md):
-
-```bash
-py -3 <skill>/scripts/uikit.py recipe ui_art/<kit> --auto
-```
-
-   It guesses each simple sprite as named shapes, such as a fill and a border, and draws `preview/recipes/<element>.png` with the source, the rebuild and the difference. View every board and edit the recipe until it matches by eye: add the bevel, shadows, gloss, inner plates and details the sprite has, each as its own shape with real layer effects, as the user's own example does: a `fill_rounded_rectangle` with Bevel & Emboss, a `stroke` group with Bevel & Emboss holding a `stroke_rounded_rectangle` whose fill is 0 and which carries a Stroke, and a `highlight_top_left` gloss. Run `recipe --match "<element>"` again after each edit. Write recipes by hand for icons, badges and ribbons that shapes and paths can draw. Only real illustration, such as characters and scenery, stays an image. Spend the effort on what the user will edit most: buttons, panels, frames, bars and tabs.
-
-**4. PSD.** `psd` has Photoshop build `export/psd/<layout>.psd`, and opens only its own document if Photoshop is already running. It needs Photoshop on this machine. Otherwise it leaves `export/psd/<layout>.jsx`, which the user runs from File > Scripts > Browse on a machine that has it.
-
-- **Hierarchy:** anything visually inside a sprite is grouped under that sprite's group, as parent and child, at any depth: a popup holds its panel, the panel holds its button, the button holds its own shapes, icon and text.
-- **Recipes:** a sprite with a recipe becomes its group of live shapes, rectangles and ellipses whose size and corner radius stay editable, with gradient fills, fill opacity, blend modes, clipping masks and layer styles: stroke, bevel and emboss, drop and inner shadow, glows, color and gradient overlay. Stretched and 9-sliced sprites keep their corners.
-- **Without a recipe:** a sprite is traced into flat-color shapes when that scores close enough, else it stays an image. Report every such sprite: it is not fully editable.
-- **Images:** art stays a smart object holding the full-size source, placed before scaling, so it can be scaled up again without loss, and repeats share one smart object. A source that had to be enlarged is reported.
-- **Text:** real text layers, never pictures of text. A font that is not installed falls back to Arial and is reported, so ask the user to install it.
-- **Patterns:** Photoshop patterns cannot be made by script; draw such surfaces with shapes or keep them as a clipped image layer, and say so.
-
-View the check image at `export/psd/assets/<layout>_check.png`, which Photoshop saved from the file, and compare it with the mockup.
-
-**5. PNG.** `export --png-only` writes the flat screen to `export/png/<layout>.png`.
-
-**6. Unity.** `unity` writes `export/unity/<layout>.json` with the same hierarchy, and each node's anchor, position relative to its parent, size, sprite, 9-slice, text, font and links. It does not build anything in Unity, and anchors are inferred from position, so say they may need adjusting.
-
-**7. Report honestly** from `export/psd_report.json`: how many sprites were rebuilt from recipes, how many were traced, how many stayed images and why, the live shape, layer effect and live text counts, any `effects_failed`, missing fonts, and the difference from the mockup. Traced sprites are flat-color bands, not built shapes, so name them. Never call the file fully editable if anything stayed an image. Finish with the paths of every PSD, PNG and Unity file, the number of images generated, and every remaining warning. State clearly that mockups and PSD files are not screens built in the engine.
+- **PSD.** Follow [Photoshop source and export](references/photoshop.md) before building any PSD. Rebuild reusable UI with native shape layers and layer effects, and match the approved demo at least 95%. Keep complex icon, decor, illustration and VFX artwork as clean, full-resolution embedded Smart Objects. Keep interface copy as live text. Use [shape recipes](references/recipes.md) for supported native constructions and finish other details in Photoshop.
+- **Component master.** When delivering reusable components in PSD, create a separate `export/psd/components.psd` with each component at its optimized sprite size. Verify 9-slice at the sizes in which it will be used. Deliver it alongside any requested screen PSDs in `export/psd/<layout>.psd`.
+- **PNG.** `export --png-only` writes the flat screen to `export/png/<layout>.png`.
+- **Unity.** `unity` writes `export/unity/<layout>.json` with the hierarchy, inferred anchors, parent-relative positions, sizes, sprites, 9-slice borders, text, font and links. Identify anchors that need adjustment. This is an assembly guide for Unity.
+- **Delivery.** Check the saved PSDs and actual Photoshop renders. Use `export/psd_report.json` as the script's report, and account for any native Photoshop edits made afterward. List delivered files, verified fidelity and remaining warnings, including missing fonts and failed effects. Report the number of images generated.

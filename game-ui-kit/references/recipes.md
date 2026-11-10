@@ -1,17 +1,19 @@
 # Shape recipes
 
-A recipe rebuilds one sprite from editable Photoshop shapes and layer effects, so the PSD can be edited layer by layer instead of holding a picture. One file per element at `style/recipes/<element>.json`, such as `style/recipes/frames/frame_activity_home.json`. The PSD export uses a sprite's recipe whenever one exists and is valid.
+A recipe describes an editable Photoshop shape stack for one sprite. Keep one file per element at `style/recipes/<element>.json`, such as `style/recipes/frames/frame_activity_home.json`. The PSD export uses a valid recipe for elements routed to native UI. Follow [Photoshop source and export](photoshop.md) to decide which elements to rebuild and how to verify them.
 
 ## Workflow
 
-1. `uikit.py recipe ui_art/<kit> --auto` writes a first guess for every simple sprite: a rectangle, rounded rectangle or ellipse with its fill or vertical gradient, and its border as a separate stroke layer. Sprites that are not a simple shape print `NO_SIMPLE_SHAPE`.
-2. View each board in `preview/recipes/<element>.png`: the source, the shape rebuild and the difference. The command prints the difference; 6 or less is hard to notice.
-3. Edit the recipe until it matches by eye: add the bevel, shadows, gloss, inner panels and decorations the sprite has, each as its own layer. Run `uikit.py recipe ui_art/<kit> --match "<element>"` again after each edit and view the board.
-4. Write recipes by hand for sprites the guess cannot handle but shapes can: icons from circles, rounded rectangles and `path` polygons, ribbons and badges from paths. Leave only real illustration as images: characters, scenery, detailed items.
+1. For an element that needs a shape stack, use `uikit.py recipe ui_art/<kit> --auto --match "<element>"` to draft a recipe for simple geometry. Sprites that the guess cannot handle print `NO_SIMPLE_SHAPE`. Write those constructions by hand if the recipe format fits.
+2. View the source, the shape rebuild and the difference on the board in `preview/recipes/<element>.png`. The numeric difference is a recipe-renderer diagnostic.
+3. Refine the shape and native effects, using separate layers only for features that need independent edits. Run `uikit.py recipe ui_art/<kit> --match "<element>"` to review changes.
+4. Use Photoshop directly for native features beyond this schema, such as smooth compound Bézier paths or clipping a placed image Smart Object to a shape. Render and verify the saved Photoshop document against the approved reference.
 
-The renderer approximates Photoshop, so a small difference that remains in soft effects is fine. The final check is `export/psd/assets/<layout>_check.png`, which Photoshop itself saves.
+The recipe renderer approximates Photoshop. Use the Photoshop render for the final fidelity check. The screen export initially writes that render to `export/psd/assets/<layout>_check.png`.
 
 ## Format
+
+This example separates the stroke because its relief is independent of the face. Use the approved reference to choose the geometry and effect settings for each element.
 
 ```json
 {
@@ -69,9 +71,8 @@ Any effect takes `"enabled": false` to keep it in the file but switched off.
 
 ## What to use when
 
-- **A border:** its own shape with `fill_opacity` 0 and a `stroke` effect, in a group named `stroke`, as in the example. A double border is two such layers.
-- **Thickness, a raised or pressed look:** `bevel` on the fill. Use `direction` `down` for a pressed state.
-- **Gloss and shine:** a white `ellipse` or `rect` with a gradient from transparent to white, `clip` to the shape below when it must not spill out.
-- **A dark lip under a button:** a second shape below the fill, moved down a few pixels, in a darker color; or `drop_shadow` with `spread` 100 and `size` 0.
-- **Inner panels and plates:** further shapes on top, each with its own effects.
-- **Repeated surface texture:** Photoshop patterns cannot be created by script, so draw the motif with shapes, or keep that part as an image layer clipped to the shape and say so.
+- **Flat outline.** Apply `stroke` directly to the primary shape.
+- **Outline with relief.** Use a matching shape with `fill_opacity` 0 and `stroke`, then apply `bevel` to its group. Apply a group-level stroke for a continuous outline around several parts.
+- **Rounded thickness.** Apply `bevel` to the primary shape. Add a separate shape for a visible lip or distinct surface that needs independent edits.
+- **Gloss or local shadow.** Use a gradient or layer effect matched to the material. Set `clip` for a separate reflection or shadow that must stay within its receiving surface.
+- **Repeated surface texture.** Use a native pattern in Photoshop if appropriate, or keep the source texture as an image clipped to the shape. Finish this in Photoshop when the recipe schema cannot represent the construction.

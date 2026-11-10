@@ -583,7 +583,7 @@ def serve(args, kit: Path) -> int:
     print(f"FORM_URL {url}", flush=True)
     if not args.no_browser:
         try:
-            webbrowser.open(url)
+            webbrowser.open_new_tab(url)
         except Exception:
             pass
     try:
