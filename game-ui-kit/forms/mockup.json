@@ -83,10 +83,18 @@
       "describe": true,
       "describe_label": "Mô tả thêm (không bắt buộc)",
       "options": [
-        {"value": "provided", "label": "Có", "attach": true, "attach_required": true},
+        {"value": "provided", "label": "Có", "hint": "Nếu gửi ảnh demo mockup có UI, skill sẽ nhận diện và tách nền trước khi mở rộng.", "attach": true, "attach_required": true},
+        {"value": "extract_demo", "label": "Tách nền từ ảnh demo mockup/reference đã gửi", "hint": "Dùng ảnh demo đã gửi hoặc đính kèm ảnh khác ở đây.", "attach": true},
         {"value": "from_kit", "label": "Không, tự chọn lọc trong UI kit", "show_if": {"question": "kit", "in": ["yes"]}},
         {"value": "generate", "label": "Không, tự tạo background mới theo art style"}
       ]
+    },
+    {
+      "id": "background_targets",
+      "type": "text",
+      "title": "Background cần hỗ trợ những kích thước hoặc tỷ lệ màn hình nào?",
+      "hint": "Không bắt buộc. Ví dụ: 1080x1920, 1080x2400, 1536x2048. Để trống: kiểm tra màn chuẩn, điện thoại dài và tablet theo hướng dọc/ngang đã setup. Ghi thêm chi tiết hình ảnh cần luôn nhìn thấy hoặc vùng UI có thể che nền.",
+      "multiline": true
     },
     {
       "id": "concept_count",

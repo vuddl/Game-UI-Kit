@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Track which command ($setup, $wireframe, $mockup) a kit is in, and undo one with reset.
+"""Track which command ($setup, $wireframe, $mockup, $export) a kit is in, and undo one with reset.
 
-    state.py <kit> begin <setup|wireframe|mockup>
+    state.py <kit> begin <setup|wireframe|mockup|export>
     state.py <kit> step "<what was just done>"
     state.py <kit> done
     state.py <kit> reset
@@ -9,13 +9,13 @@
     state.py <kit> summary      everything saved so far, for $info; changes nothing
 
 begin prints one of:
-  NEEDS_SETUP   no setup yet; only $setup may run
+  NEEDS_SETUP   $wireframe and $mockup need a saved setup; $export does not
   START         a new run of the command
   RESUME        back to a command left unfinished for another one; its step is printed
   CONTINUE      the same command is still running; carry on from its step
 reset deletes every file the current command created, restores the text files it changed
 (when no other command ran in between), and starts that command again. Resetting setup
-also deletes the setup, so every other command is blocked until $setup runs again.
+also deletes the setup, so $wireframe and $mockup are blocked until $setup runs again.
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ask import clean_inputs  # noqa: E402
 
-COMMANDS = ("setup", "wireframe", "mockup")
+COMMANDS = ("setup", "wireframe", "mockup", "export")
 HIDDEN = ".gui"
 BACKUP_TYPES = {".json", ".md", ".txt"}
 BACKUP_MAX = 5 * 1024 * 1024
@@ -101,9 +101,10 @@ def needs_setup(kit: Path) -> bool:
 
 def cmd_begin(kit: Path, command: str) -> int:
     data = load(kit)
-    if command != "setup" and needs_setup(kit):
-        print(json.dumps({"status": "NEEDS_SETUP", "message": "Run $setup first. No other command runs before it."}))
+    if command in ("wireframe", "mockup") and needs_setup(kit):
+        print(json.dumps({"status": "NEEDS_SETUP", "message": "Run $setup before $wireframe or $mockup. $export can run independently."}))
         return 3
+    kit.mkdir(parents=True, exist_ok=True)
     runs, current = data["runs"], data.get("current")
     run = runs.get(command)
     if current == command and run and run["status"] == "active":
@@ -284,9 +285,15 @@ def cmd_summary(kit: Path) -> int:
         "images": [p for p in list_images(kit, "preview/mockups") if "_variants" not in p and "_vs_reference" not in p],
     }
     export = read_json(kit / "briefs" / "export.json")
-    files = sorted(p.relative_to(kit).as_posix() for p in (kit / "export").rglob("*")
-                   if p.is_file() and p.parent.name in ("psd", "png", "unity")) if (kit / "export").exists() else []
-    summary["export"] = {"formats": (export or {}).get("formats"), "layouts": (export or {}).get("layouts"), "files": files}
+    delivery = read_json(kit / "export" / "delivery_report.json") or {}
+    files = delivery.get("files") or []
+    if not files and (kit / "export").exists():
+        files = sorted(p.relative_to(kit).as_posix() for p in (kit / "export").rglob("*")
+                       if p.is_file() and p.parent.name in ("psd", "png", "unity"))
+    summary["export"] = {"formats": (export or {}).get("formats"), "layouts": (export or {}).get("layouts"),
+                         "source": (export or {}).get("source"), "sources": (export or {}).get("sources"),
+                         "photoshop": (export or {}).get("photoshop"), "files": files,
+                         "resource_map": delivery.get("resources"), "warnings": delivery.get("warnings")}
     inputs = kit / "inputs"
     summary["attached_files"] = sum(1 for p in inputs.rglob("*") if p.is_file()) if inputs.exists() else 0
     print(json.dumps(summary, indent=2, ensure_ascii=False))
@@ -305,10 +312,10 @@ def main() -> int:
     if args.action == "begin":
         if args.value not in COMMANDS:
             parser.error(f"begin needs one of {COMMANDS}")
-        if args.value == "setup":
+        if args.value in ("setup", "export"):
             kit.mkdir(parents=True, exist_ok=True)
         elif not kit.exists():
-            print(json.dumps({"status": "NEEDS_SETUP", "message": "Run $setup first. No other command runs before it."}))
+            print(json.dumps({"status": "NEEDS_SETUP", "message": "Run $setup before $wireframe or $mockup. $export can run independently."}))
             return 3
         return cmd_begin(kit, args.value)
     if args.action == "step":
@@ -319,7 +326,7 @@ def main() -> int:
         return cmd_reset(kit)
     if args.action == "summary":
         if not kit.exists():
-            print(json.dumps({"kit": None, "setup": None, "message": "No kit yet. Run $setup."}))
+            print(json.dumps({"kit": None, "setup": None, "message": "No kit yet. Run $setup or $export."}))
             return 0
         return cmd_summary(kit)
     return cmd_show(kit)

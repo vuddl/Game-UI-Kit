@@ -32,6 +32,8 @@ except ImportError as exc:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psd_recipe as recipes  # noqa: E402
+from photoshop import inspect_photoshop, run_photoshop  # noqa: E402
+import background as backgrounds  # noqa: E402
 
 NAME_RE = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)*$")
 STATE_RE = re.compile(r"_(normal|hover|pressed|selected|disabled|locked)$")
@@ -834,7 +836,7 @@ def cmd_states(args) -> int:
     return 0
 
 
-LAYOUT_KEYS = {"size", "title", "background", "reference", "font", "items"}
+LAYOUT_KEYS = {"size", "title", "background", "background_profile", "reference", "font", "items"}
 ITEM_KEYS = {"element", "text", "x", "y", "w", "h", "anchor", "mode", "border_scale", "opacity",
              "text_color", "text_size", "text_stroke", "fill", "group", "goto", "label", "name", "role",
              "wf", "icon", "sub", "badge", "selected", "align"}
@@ -922,6 +924,9 @@ def read_layout(path: Path) -> dict:
         bad('"size" must be [width, height] in pixels, at most 8192')
     if not isinstance(layout.get("items"), list) or not layout["items"]:
         bad('"items" must be a non-empty list')
+    if "background_profile" in layout and (not isinstance(layout["background_profile"], str) or
+            not isinstance(layout.get("background"), str) or layout["background"].startswith("#")):
+        bad('"background_profile" needs a JSON path and an image background')
     for index, item in enumerate(layout["items"]):
         where = f"item {index}"
         if not isinstance(item, dict):
@@ -1180,6 +1185,32 @@ def cmd_shapes(args) -> int:
     return 0
 
 
+def background_geometry(kit: Path, layout: dict, file: Path) -> tuple[dict, list]:
+    alignment = [0.5, 0.5]
+    if layout.get("background_profile"):
+        try:
+            profile = backgrounds.load_profile(kit, layout["background_profile"])
+            if backgrounds.kit_file(kit, profile["image"]) != file.resolve():
+                raise ValueError("background and background_profile refer to different images")
+            alignment = profile.get("alignment", alignment)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            die("BAD_BACKGROUND_PROFILE", str(exc), 1)
+    with Image.open(file) as source:
+        return backgrounds.cover_geometry(source.size, layout["size"], alignment), alignment
+
+
+def validate_background_export(kit: Path, layout: dict, layout_name: str | None = None) -> dict | None:
+    if not layout.get("background_profile"):
+        return None
+    try:
+        report = backgrounds.current_report(kit, layout["background_profile"], layout_name)
+        if list(layout["size"]) not in [t["size"] for t in report["targets"]]:
+            raise ValueError("Add the layout's reference size to the profile targets and run background.py check.")
+        return report
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        die("BACKGROUND_NEEDS_REVIEW", str(exc), 2)
+
+
 def build_layers(kit: Path, layout: dict, manifest: dict):
     """Turn a layout into ordered layers. PNG mockups and PSD exports both draw from this."""
     size = tuple(layout["size"])
@@ -1213,7 +1244,10 @@ def build_layers(kit: Path, layout: dict, manifest: dict):
         elif (kit / str(background)).is_file():
             file = kit / str(background)
         if file:
-            add(Image.open(file).convert("RGBA").resize(size, Image.LANCZOS), "Background")
+            geometry, alignment = background_geometry(kit, layout, file)
+            add(backgrounds.render_cover(Image.open(file), size, alignment), "Background")
+            if geometry["scale"] > 1.001:
+                warn(f"background upscaled {geometry['scale']:.2f}x; review source resolution")
         else:
             missing.append(str(background))
             add(Image.new("RGBA", size, (40, 44, 52, 255)), "Background")
@@ -1941,6 +1975,7 @@ def cmd_export(args) -> int:
     built = {}
     for screen, path in picked.items():
         layout = read_layout(path)
+        validate_background_export(kit, layout, path.stem)
         layers, warnings, missing, _ = build_layers(kit, layout, manifest)
         if missing:
             die("MISSING_ELEMENT", f"{screen} uses missing elements {missing}. Fix the layout before exporting.")
@@ -2014,14 +2049,16 @@ def cmd_info(args) -> int:
     exported = sorted(p.stem for p in (kit / "export").rglob("*") if p.suffix in (".psd", ".png", ".json")
                       and p.parent.name in ("psd", "png", "unity"))
     mocked = [p.stem for p in (kit / "preview" / "mockups").glob("*.png")] if (kit / "preview" / "mockups").exists() else []
-    if not brief:
+    if read("briefs/export.json") and not brief:
+        step = "Continue $export or inspect its delivery with $info; no setup is needed."
+    elif not brief:
         step = "Run $setup."
     elif not screens:
         step = "Run $wireframe, or $mockup with your own wireframe files."
     elif not mocked:
         step = "Run $mockup."
     elif not exported:
-        step = "Run $mockup and answer Có to Export."
+        step = "Run $export and choose the files to deliver."
     else:
         step = "Exported. Run $mockup again to change or add screens."
     info = {
@@ -2926,28 +2963,6 @@ var names = []; for (var key in missingFonts) names.push('"' + key + '"');
 """
 
 
-def run_photoshop(jsx: Path, timeout: int) -> dict | None:
-    """Run a script in Photoshop on Windows. Return None when Photoshop cannot be reached."""
-    if sys.platform != "win32":
-        return None
-    command = ("$ErrorActionPreference='Stop';$running=[bool](Get-Process Photoshop -ErrorAction SilentlyContinue);"
-               "$ps=New-Object -ComObject Photoshop.Application;"
-               f"$out=$ps.DoJavaScriptFile('{jsx.resolve()}');"
-               "if(-not $running){$ps.Quit()};[Console]::OutputEncoding=[Text.Encoding]::UTF8;Write-Output $out")
-    try:
-        done = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    start, end = done.stdout.find("{"), done.stdout.rfind("}")
-    if start < 0 or end < start:
-        return None
-    try:
-        return json.loads(done.stdout[start:end + 1])
-    except ValueError:
-        return {"ok": False, "error": done.stdout[start:end + 1][:300]}
-
-
 def layout_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -3039,9 +3054,22 @@ def export_targets(kit: Path, args) -> dict[str, Path]:
 
 def cmd_psd(args) -> int:
     kit = Path(args.kit)
+    selected = None
+    if not args.no_run:
+        brief_path = kit / "briefs" / "export.json"
+        try:
+            brief = json.loads(brief_path.read_text(encoding="utf-8")) if brief_path.exists() else {}
+            path = (brief.get("photoshop") or {}).get("path")
+            if not path:
+                die("NEEDS_PHOTOSHOP_CHOICE", "Open the export form and let the user choose a Photoshop installation first.", 3)
+            selected = inspect_photoshop(path)
+        except (OSError, ValueError) as exc:
+            die("INVALID_PHOTOSHOP_CHOICE", f"{exc} Open the export form to choose again.", 3)
     manifest = load_manifest(kit)
     targets = export_targets(kit, args)
     layouts = {s: read_layout(p) for s, p in targets.items()}
+    for screen, layout in layouts.items():
+        validate_background_export(kit, layout, targets[screen].stem)
     with_image = [s for s, l in layouts.items() if isinstance(l.get("background"), str) and not l["background"].startswith("#")]
     if with_image and not args.background:
         die("NEEDS_BACKGROUND_CHOICE", f"ask the user: redraw or keep the background as one image layer? Screens: {with_image}. "
@@ -3074,15 +3102,16 @@ def cmd_psd(args) -> int:
                         "subpaths": [[[0, 0], [size[0], 0], [size[0], size[1]], [0, size[1]]]]})
         elif background:
             file = kit / manifest["elements"][background]["file"] if background in manifest["elements"] else kit / background
+            bg_box = background_geometry(kit, layout, file)[0]["box"]
             bg_name = f"bg_{slug(Path(str(background)).stem)}"
             if args.background == "redraw" and background in manifest["elements"]:
-                bg_node = {"name": bg_name, "box": [0, 0, size[0], size[1]], "item": {"element": background, "w": size[0], "h": size[1], "mode": "stretch"},
+                bg_node = {"name": bg_name, "box": bg_box, "item": {"element": background, "w": bg_box[2] - bg_box[0], "h": bg_box[3] - bg_box[1], "mode": "stretch"},
                            "element": background, "entry": manifest["elements"][background]}
                 ops += psd_ops(kit, bg_node, layout, font, args, stats, assets)
                 if bg_name in stats["image"]:
                     notes.append(f"{bg_name}: too detailed to redraw accurately, so it stayed an image layer")
             else:
-                ops.append({"op": "smart", "name": bg_name, "file": file.resolve().as_posix(), "box": [0, 0, size[0], size[1]], "opacity": 100})
+                ops.append({"op": "smart", "name": bg_name, "file": file.resolve().as_posix(), "box": bg_box, "opacity": 100})
         for node in nodes:
             ops += psd_ops(kit, node, layout, font, args, stats, assets)
         psd = psd_dir / f"{screen}.psd"
@@ -3090,8 +3119,10 @@ def cmd_psd(args) -> int:
         plan = {"size": list(size), "title": screen, "ops": ops, "psd": psd.resolve().as_posix(), "check": check.resolve().as_posix()}
         jsx = psd_dir / f"{screen}.jsx"
         jsx.write_text(PSD_JSX.replace("__PLAN__", json.dumps(plan, ensure_ascii=True)), encoding="utf-8")
-        result = None if args.no_run else run_photoshop(jsx, args.timeout)
+        result = None if args.no_run else run_photoshop(jsx, args.timeout, selected)
         entry = {"psd": psd.relative_to(kit).as_posix() if result and result.get("ok") else None,
+                 "photoshop": selected,
+                 "layout_sha256": layout_hash(targets[screen]),
                  "script": jsx.relative_to(kit).as_posix(), "rebuilt_from_recipes": stats["recipe"],
                  "redrawn_as_shapes": stats["vector"],
                  "kept_as_images": stats["image"], "kit_sprites_as_images": stats["kit_images"], "art_kept_as_images": stats["art_as_images"], "live_text": stats["text"], "font": font, "font_source": font_source,
@@ -3104,6 +3135,8 @@ def cmd_psd(args) -> int:
             status = 2
         else:
             entry["status"] = "built in Photoshop"
+            if psd.exists():
+                entry["psd_sha256"] = layout_hash(psd)
             entry["layers"] = {k: result.get(k) for k in ("shape", "live_shapes", "effects", "effects_failed", "text", "smart", "group")}
             entry["fonts_not_installed"] = result.get("missing_fonts", [])
             if check.exists():
@@ -3168,6 +3201,8 @@ def cmd_unity(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
     targets = export_targets(kit, args)
+    for path in targets.values():
+        validate_background_export(kit, read_layout(path), path.stem)
     out_dir = kit / "export" / "unity"
     existing = [s for s in targets if (out_dir / f"{s}.json").exists()]
     if existing and not args.force:
@@ -3180,10 +3215,27 @@ def cmd_unity(args) -> int:
         font_path, source = resolve_font(kit, layout)
         font_name = Path(font_path).stem if font_path else "default"
         background = layout.get("background")
-        mapping = {"version": 1, "screen": screen, "layout": path.stem, "referenceResolution": list(size),
+        mapping = {"version": 1, "screen": screen, "layout": path.stem, "source_layout_sha256": layout_hash(path), "referenceResolution": list(size),
                    "canvasScaler": {"mode": "ScaleWithScreenSize", "matchWidthOrHeight": 1}, "font": font_name,
                    "spritesRoot": "elements" , "background": background,
                    "nodes": [unity_node(node, size, font_name) for node in nodes]}
+        if background and not background.startswith("#"):
+            file = kit / manifest["elements"][background]["file"] if background in manifest["elements"] else kit / background
+            geometry, alignment = background_geometry(kit, layout, file)
+            with Image.open(file) as image:
+                native = list(image.size)
+            mapping["backgroundRendering"] = {
+                "file": file.relative_to(kit).as_posix(), "sourceSize": native,
+                "mode": "uniformCover", "alignmentTopLeft": alignment,
+                "referencePlacement": geometry, "imageType": "Simple", "spriteMeshType": "FullRect",
+                "parent": "fullViewportOutsideSafeArea", "raycastTarget": False,
+                "scaleFormula": "max(viewportWidth/sourceWidth, viewportHeight/sourceHeight)",
+                "positionFormula": "(viewportSize - sourceSize * scale) * alignmentTopLeft; negate Y for Unity",
+                "notes": "Use one scale for both axes. Image.preserveAspect alone does not implement cover. Review UI occlusion on target devices."}
+            if layout.get("background_profile"):
+                mapping["backgroundRendering"]["qa"] = validate_background_export(kit, layout, path.stem)
+            else:
+                mapping["backgroundRendering"]["qa"] = {"status": "not_checked", "visual_review_required": True}
         (out_dir / f"{screen}.json").write_text(json.dumps(mapping, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"{screen}: export/unity/{screen}.json, {len(nodes)} top-level nodes, {len(notes)} naming notes")
     return 0
@@ -3235,14 +3287,17 @@ def cmd_device(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
     picked = selected_layouts(kit, args.screen, strict=False)
-    devices = {"16x9": (1920, 1080), "20x9": (2400, 1080), "16x10": (1728, 1080), "4x3": (1440, 1080)}
     out_dir = kit / "preview" / "devices"
     out_dir.mkdir(parents=True, exist_ok=True)
     problems = 0
     for screen, path in picked.items():
         layout = read_layout(path)
+        targets = backgrounds.default_targets(layout["size"])
+        if layout.get("background_profile"):
+            targets = backgrounds.load_profile(kit, layout["background_profile"])["targets"]
         thumbs = []
-        for label, (width, height) in devices.items():
+        for width, height in targets:
+            label = f"{width}x{height}"
             layers, warnings, _, _ = build_layers(kit, device_layout(layout, width, height), manifest)
             image = flatten(layers, (width, height))
             image.thumbnail((640, 360))
@@ -3252,7 +3307,7 @@ def cmd_device(args) -> int:
             print(f"{screen} {label}: {len(serious)} problems")
             for warning in serious:
                 print(f"  {warning}".encode("ascii", "replace").decode())
-        board = Image.new("RGB", (sum(t.width for _, t in thumbs) + 16 * 5, 400), (245, 245, 245))
+        board = Image.new("RGB", (sum(t.width for _, t in thumbs) + 16 * (len(thumbs) + 1), 400), (245, 245, 245))
         draw = ImageDraw.Draw(board)
         x = 16
         for label, thumb in thumbs:

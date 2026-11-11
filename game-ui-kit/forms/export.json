@@ -1,55 +1,150 @@
 {
   "id": "export",
-  "title": "Export file thiết kế",
-  "intro": "Kết quả luôn kèm file JSON hướng dẫn ghép trong Unity.",
+  "title": "Export UI",
+  "intro": "Xuất từ ảnh mockup có sẵn hoặc các màn trong kit. Không cần chạy $setup, $wireframe hay $mockup trước.",
   "questions": [
     {
-      "id": "format",
-      "type": "multi",
-      "title": "Export file Photoshop hay ảnh PNG?",
+      "id": "source",
+      "type": "single",
+      "title": "Bạn muốn export từ đâu?",
       "required": true,
       "options": [
         {
-          "value": "psd",
-          "label": "File Photoshop (PSD)"
+          "value": "provided",
+          "label": "Ảnh mockup có sẵn",
+          "hint": "Dùng ảnh đã gửi hoặc thêm ảnh ở bên dưới."
         },
         {
-          "value": "png",
-          "label": "Ảnh PNG"
+          "value": "existing",
+          "label": "Các màn đã làm trong kit",
+          "hint": "Chọn những màn và phiên bản muốn xuất."
         }
       ]
     },
     {
-      "id": "background",
-      "type": "single",
-      "title": "Background trong file PSD vẽ lại hay để 1 layer ảnh?",
-      "hint": "Hỏi lại mỗi lần export. Vẽ lại: dựng background bằng shape và effect khi được. Ảnh: một smart object giữ ảnh gốc.",
+      "id": "screens",
+      "type": "files",
+      "title": "Ảnh mockup cần export",
       "required": true,
       "show_if": {
-        "question": "format",
+        "question": "source",
         "in": [
-          "psd"
+          "provided"
         ]
       },
-      "options": [
+      "hint": "PNG, JPG, WebP, PSD hoặc ZIP chứa ảnh màn hình. Mỗi ảnh là một phiên bản; có thể dùng cùng tên màn cho nhiều phiên bản. Kích thước được đọc từ từng ảnh.",
+      "file_fields": [
         {
-          "value": "image",
-          "label": "Một layer ảnh (smart object)",
-          "hint": "Nhẹ, giữ nguyên ảnh gốc."
+          "id": "screen",
+          "label": "Tên màn",
+          "placeholder": "Để trống: Codex nhận diện từ ảnh"
         },
         {
-          "value": "redraw",
-          "label": "Vẽ lại bằng shape và effect",
-          "hint": "Sửa được từng phần; background nhiều chi tiết có thể vẫn phải để ảnh."
+          "id": "note",
+          "label": "Ghi chú",
+          "placeholder": "Yêu cầu riêng cho ảnh này (không bắt buộc)",
+          "multiline": true
         }
       ]
     },
     {
       "id": "layouts",
       "type": "multi",
-      "title": "Chọn option để export",
+      "title": "Chọn các màn và phiên bản muốn export",
       "required": true,
+      "show_if": {
+        "question": "source",
+        "in": [
+          "existing"
+        ]
+      },
       "options_from": "kit:mockups"
+    },
+    {
+      "id": "format",
+      "type": "multi",
+      "title": "Bạn muốn xuất những file nào?",
+      "hint": "Có thể chọn nhiều mục cùng lúc.",
+      "required": true,
+      "options": [
+        {
+          "value": "ui_kit",
+          "label": "Bộ UI kit và ảnh demo",
+          "hint": "Tạo UI kit từ ảnh demo, gồm sprite dùng chung, element riêng từng màn và ảnh PNG ghép UI hoàn chỉnh."
+        },
+        {
+          "value": "components_psd",
+          "label": "Bộ UI kit (PSD)",
+          "hint": "Gom các thành phần UI vào components.psd, chia layer để chỉnh sửa trong Photoshop."
+        },
+        {
+          "value": "screen_psd",
+          "label": "PSD từng màn",
+          "hint": "Mỗi màn một file Photoshop, tách riêng nhóm UI, chữ và artwork."
+        },
+        {
+          "value": "unity",
+          "label": "Dữ liệu ghép Unity (JSON)",
+          "hint": "Lưu cấu trúc, vị trí, kích thước, anchors và thông tin tài nguyên để ghép màn trong Unity."
+        },
+        {
+          "value": "zip",
+          "label": "Gói ZIP và báo cáo",
+          "hint": "Đóng gói các file đã chọn, kèm danh sách tài nguyên, kết quả kiểm tra và những hạn chế còn lại. Chọn cùng ít nhất một loại file bên trên."
+        }
+      ]
+    },
+    {
+      "id": "photoshop",
+      "type": "single",
+      "title": "Bạn muốn dùng bản Photoshop nào để tạo PSD?",
+      "hint": "Các bản tìm thấy trên máy được liệt kê kèm phiên bản và đường dẫn. Chọn lại mỗi lần export, kể cả khi chỉ có một bản.",
+      "required": true,
+      "show_if": {
+        "question": "format",
+        "in": [
+          "components_psd",
+          "screen_psd"
+        ]
+      },
+      "options_from": "host:photoshop",
+      "other": {
+        "label": "Chọn bản khác bằng đường dẫn Photoshop.exe",
+        "placeholder": "Ví dụ: D:\\Adobe\\Photoshop\\Photoshop.exe"
+      }
+    },
+    {
+      "id": "background",
+      "type": "single",
+      "title": "Background trong file PSD vẽ lại hay để một layer ảnh?",
+      "hint": "Hỏi lại mỗi lần export PSD. Background ảnh được giữ đủ phần đã mở rộng để dùng cho nhiều tỷ lệ màn hình.",
+      "required": true,
+      "show_if": {
+        "question": "format",
+        "in": [
+          "components_psd",
+          "screen_psd"
+        ]
+      },
+      "options": [
+        {
+          "value": "image",
+          "label": "Một layer ảnh (Smart Object)",
+          "hint": "Giữ ảnh nền đầy đủ, chỉnh được vị trí và kích thước."
+        },
+        {
+          "value": "redraw",
+          "label": "Vẽ lại bằng shape và effect",
+          "hint": "Chỉnh sửa từng phần; cảnh nhiều chi tiết có thể vẫn cần giữ ảnh."
+        }
+      ]
+    },
+    {
+      "id": "background_targets",
+      "type": "text",
+      "title": "Yêu cầu thêm (không bắt buộc)",
+      "multiline": true,
+      "hint": "Ví dụ: các kích thước màn hình cần hỗ trợ, phần hình ảnh phải giữ, font có sẵn, cách đặt tên hoặc phân nhóm tài nguyên. Nếu để trống, Codex phân loại theo nội dung từng game."
     }
   ]
 }

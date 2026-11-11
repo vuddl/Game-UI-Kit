@@ -36,6 +36,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from photoshop import discover_photoshop, inspect_photoshop
+
 SKILL = Path(__file__).resolve().parent.parent
 FORMS = SKILL / "forms"
 CATALOG = SKILL / "references" / "catalog.md"
@@ -181,6 +183,9 @@ def options_for(source: str, kit: Path) -> list[dict]:
             found = kit_mockups(kit)
         elif part == "kit:previews":
             found = kit_previews(kit, PREVIEW["kind"], PREVIEW["screens"])
+        elif part == "host:photoshop":
+            found = [{"value": item["path"], "label": f'{item["label"]} · {item["version"]}',
+                      "hint": item["path"]} for item in discover_photoshop()]
         else:
             raise SystemExit(f"Unknown options_from: {part}")
         for option in found:
@@ -197,7 +202,7 @@ def setup_size(kit: Path):
 
 def build_context(kit: Path) -> dict:
     size, orientation = setup_size(kit)
-    context = {"kit": kit.resolve().name}
+    context = {"kit": kit.resolve().name, "has_layouts": bool(kit_layouts(kit))}
     if orientation:
         context["orientation"] = orientation
         context["summary"] = f"Setup: {orientation}, {size[0]} × {size[1]}" if size else f"Setup: {orientation}"
@@ -223,7 +228,16 @@ def load_form(name: str, kit: Path) -> dict:
         form["personal_suggestions"] = personal_suggestions(name, kit, form["description_suggestions"])
     for question in form["questions"]:
         if "options_from" in question:
-            question["options"] = question.get("options", []) + options_for(question.pop("options_from"), kit)
+            source = question.pop("options_from")
+            try:
+                question["options"] = question.get("options", []) + options_for(source, kit)
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                if source != "host:photoshop":
+                    raise
+                question["options"] = []
+                question["hint"] = "Không đọc được danh sách Photoshop. Nhập đường dẫn Photoshop.exe ở lựa chọn bên dưới."
+            if source == "host:photoshop" and not question["options"]:
+                question["hint"] += " Chưa tìm thấy bản Photoshop nào; nếu chưa cài, bỏ các mục PSD và chọn Bộ UI kit và ảnh demo (PNG) hoặc JSON Unity."
         for field in question.get("file_fields") or []:
             if "suggestions_from" in field:
                 field["suggestions"] = [o["label"] for o in options_for(field.pop("suggestions_from"), kit)]
@@ -232,6 +246,9 @@ def load_form(name: str, kit: Path) -> dict:
         versions.update(title="Bạn muốn chỉnh gì ở concept này?", hint="Ghi rõ phần cần đổi. Có thể đính kèm ảnh minh họa.")
         form.update(title="Sửa concept", intro="Bấm Hoàn thành để tạo bản chỉnh sửa và xem lại trước khi chốt.",
                     questions=[versions])
+    if name == "export" and not kit_layouts(kit):
+        source = next(q for q in form["questions"] if q["id"] == "source")
+        source["options"] = [o for o in source["options"] if o["value"] != "existing"]
     return form
 
 
@@ -432,9 +449,42 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
                              for e in (answers.get("screens") or {}).get("value") or []]
     if form_id == "export":
         record["formats"] = [e["choice"] for e in (answers.get("format") or {}).get("value") or []]
-        record["layouts"] = [e["choice"] for e in (answers.get("layouts") or {}).get("value") or []]
+        formats = set(record["formats"])
+        if not formats or formats - {"ui_kit", "components_psd", "screen_psd", "unity", "zip"}:
+            raise ValueError("Chọn ít nhất một loại file trong danh sách export.")
+        if formats == {"zip"}:
+            raise ValueError("Chọn thêm ít nhất một loại file để đóng gói ZIP.")
+        source = ((answers.get("source") or {}).get("value") or {}).get("choice")
+        record["source"] = source
+        if source == "existing":
+            record["layouts"] = [e["choice"] for e in (answers.get("layouts") or {}).get("value") or []]
+            if not record["layouts"] or set(record["layouts"]) - set(kit_layouts(kit)):
+                raise ValueError("Chọn màn có trong kit, hoặc dùng ảnh mockup có sẵn.")
+        elif source == "provided":
+            files = (answers.get("screens") or {}).get("value") or []
+            if not files:
+                raise ValueError("Thêm ít nhất một ảnh mockup để export.")
+            sources = []
+            for file in files:
+                path = (kit / file["path"]).resolve()
+                if not path.is_relative_to(kit.resolve()) or not path.is_file() or path.suffix.lower() not in FROM_ZIP:
+                    raise ValueError("Ảnh mockup phải là file PNG, JPG, WebP hoặc PSD đã thêm vào kit.")
+                sources.append({"file": file["path"], "name": file.get("name", path.name),
+                                "screen": slug(file["screen"]) if (file.get("screen") or "").strip() else "",
+                                "label": (file.get("screen") or "").strip(), "note": file.get("note", "")})
+            record.update(sources=sources, layouts=[])
+        else:
+            raise ValueError("Chọn nguồn ảnh mockup hoặc các màn đã làm trong kit.")
+        if formats & {"components_psd", "screen_psd"}:
+            choice = (answers.get("photoshop") or {}).get("value") or {}
+            path = choice.get("label") if choice.get("choice") == "other" else choice.get("choice")
+            if not path:
+                raise ValueError("Chọn một bản Photoshop để tạo PSD trước khi hoàn thành.")
+            record["photoshop"] = inspect_photoshop(path.strip().strip('"'))
         background = ((answers.get("background") or {}).get("value") or {}).get("choice")
-        if background:
+        if formats & {"components_psd", "screen_psd"}:
+            if background not in ("image", "redraw"):
+                raise ValueError("Chọn cách xử lý background trong PSD.")
             record["background"] = background
     return record
 
@@ -565,6 +615,20 @@ def serve(args, kit: Path) -> int:
     out = kit / args.out
     old = read_json(out, {}) or {}
     prefill = old.get("answers") or {}
+    if args.form == "export":
+        prefill.pop("photoshop", None)  # require an explicit choice on every export, even for one install
+        source = "existing" if kit_layouts(kit) else "provided"
+        prefill.setdefault("source", {"value": {"choice": source}})
+        if not kit_layouts(kit):
+            prefill["source"] = {"value": {"choice": "provided"}}
+        # Old saved choices are migrated into the new, reviewable multi-select form.
+        aliases = {"psd": "screen_psd", "png": "ui_kit"}
+        choices = next(q for q in form["questions"] if q["id"] == "format")["options"]
+        labels = {o["value"]: o["label"] for o in choices}
+        for entry in (prefill.get("format") or {}).get("value") or []:
+            entry["choice"] = aliases.get(entry.get("choice"), entry.get("choice"))
+            if entry["choice"] in labels:
+                entry["label"] = labels[entry["choice"]]
     if args.form == "revise" and args.kind == "concepts":
         draft = form["questions"][0]["options"][0]
         prefill.setdefault("versions", {"value": [{"choice": draft["value"], "label": draft["label"]}]})

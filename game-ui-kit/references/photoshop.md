@@ -2,7 +2,17 @@
 
 Use these rules for screen PSDs, reusable component masters and standalone UI element PSDs. Start from the approved design for each element. Choose geometry, colors and effects from that design and its intended use.
 
+## Select Photoshop before creating files
+
+On each PSD export, let the user choose the Photoshop installation first. The export form discovers installed versions on Windows from registry entries, running processes, common installation folders and Start Menu/Desktop shortcuts. It lists each version with its executable path, requires an explicit choice even for a single install, and accepts a manually entered `Photoshop.exe` path for an install it missed. PNG-only export needs no Photoshop choice.
+
+The submitted `briefs/export.json` contains `photoshop: {path, label, version}`. `uikit.py psd` validates this executable before creating export assets and launches it directly. A runtime check of Photoshop's application path stops execution in a different installation. A missing or invalid choice requires reopening the export form; a launch failure requires reporting the error, with no automatic switch to another version. `--no-run` only prepares JSX for later execution.
+
+Use the same selected installation for the component master, follow-up scripts, reopening and rendering. For standalone PSD requests outside the screen export form, run `py -3 <skill>/scripts/photoshop.py`, show the found versions and paths as a choice, then save the user's selection under `photoshop` in the export brief. If nothing is found, explain that a valid Photoshop path or an installation is needed before creating the PSD.
+
 ## Choose the layer type
+
+For a background taken from a demo, first follow [background separation and multisize](backgrounds.md). Keep the complete cleaned and expanded master at its actual pixel dimensions inside the background Smart Object. The screen PSD shows its uniform cover crop; do not discard the off-canvas image data or stretch the source independently along X and Y. Keep foreground subjects and UI separate, and deliver the full clean background PNG and its multisize QA/Unity guidance alongside screen PSDs. A redraw choice must preserve the same composition and crop behavior.
 
 | Content | PSD construction |
 |---|---|
@@ -33,6 +43,6 @@ Keep the original pixel dimensions inside each image Smart Object. Use the origi
 ## Build and verify the deliverables
 
 1. Use [shape recipes](recipes.md) for supported editable constructions. `uikit.py recipe --auto` and its preview boards are draft aids. For screen exports, mark artwork to be preserved as `"role": "art"` and run `psd` with `--art image`. Use `"role": "ui"` where the name would otherwise route native UI to art. Respect any specific user direction to redraw an artwork. Inspect the output for automated traces or flattened structural UI and replace them with the intended layers before delivery.
-2. `uikit.py psd` assembles screen PSDs. Build the component master in Photoshop. Finish constructions outside the recipe format in Photoshop or with a targeted Photoshop script, including smooth compound curves and Smart Object clipping to a live shape. Open and save only the export documents. If Photoshop is unavailable, report that the generated `.jsx` is pending execution and that the PSD and its render are pending verification.
+2. `uikit.py psd` assembles screen PSDs in the selected installation. Build the component master there too. Finish constructions outside the recipe format in that Photoshop or with a targeted Photoshop script, including smooth compound curves and Smart Object clipping to a live shape. Open and save only the export documents. If the selected Photoshop cannot execute the generated `.jsx`, report the failure and that the PSD and its render are pending verification; ask the user to choose again before using another version.
 3. Render the saved PSD in Photoshop and compare each rebuilt component against its approved demo. Align at the same visible size and compare on the same backdrop, checking silhouette, hue, depth, stroke, highlights and shadows at normal size and zoomed in. Require **at least 95% visual fidelity**. Record a repeatable image comparison, such as SSIM over the aligned artwork and edge region. Exclude unrelated background and excess empty padding. Review the material, edges and lighting visually as well. If the reference prevents a reliable score, record what could be verified and why a score was unavailable. Iterate on weak matches. Smoother edges and more polished effects are welcome when they retain the approved form and look.
 4. Reopen the saved PSD and verify Shape Layers, live effects, group hierarchy, live text, full-resolution embedded sources and clipping relationships. Review screen check images at `export/psd/assets/<layout>_check.png` and render again after any Photoshop edits. Check fonts, missing effects and unintended upscaling. Report any unverified fidelity, unresolved mismatch or workaround with the affected element and deliver the file paths.

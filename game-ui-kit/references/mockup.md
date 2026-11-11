@@ -23,7 +23,8 @@ One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.js
 | `size` | Required. Screen `[width, height]` in pixels. Use the reference's size when there is one, so positions can be measured directly. |
 | `items` | Required. The list of items. |
 | `title` | Screen name shown in the flow and demo. |
-| `background` | Hex color, an element name, or an image path relative to the kit, stretched to fill the screen. |
+| `background` | Hex color, an element name, or an image path relative to the kit. Image backgrounds use uniform cover and crop overflow, preserving their proportions. |
+| `background_profile` | Kit-relative JSON path, such as `briefs/backgrounds/home.json`. See [background multisize](backgrounds.md). Declares the actual master image, target sizes, protected subjects and top-left crop alignment. |
 | `reference` | Image path relative to the kit. Also writes `<screen>_vs_reference.png`. |
 | `font` | Font file, relative to the kit or absolute. Defaults to the first file in the kit's `fonts/`, then a system font with a warning. |
 

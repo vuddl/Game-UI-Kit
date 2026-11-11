@@ -1,6 +1,6 @@
 ---
 name: game-ui-kit
-description: Generate game UI wireframes, visual mockups and design files through five commands, $setup, $wireframe, $mockup, $reset and $info, asking the user through browser forms. Builds a consistent set of UI artwork (buttons with states, panels, popups, bars, frames, icons) as named transparent PNGs with 9-slice data, from a text brief, references or an existing UI kit, assembles mockups from the sprites, and exports layered PSD, PNG and a Unity assembly JSON. Use when the user types $setup, $wireframe, $mockup, $reset or $info, or asks for a game UI kit, wireframe, mockup or PSD. Does not build screens, prefabs or scenes in a game engine.
+description: Generate game UI wireframes, visual mockups and design files through six commands, $setup, $wireframe, $mockup, $export, $reset and $info, asking the user through browser forms. Builds a consistent set of UI artwork (buttons with states, panels, popups, bars, frames, icons) as named transparent PNGs with 9-slice data, from a text brief, references or an existing UI kit, assembles mockups from the sprites, and exports layered PSD, PNG and a Unity assembly JSON. Use when the user types $setup, $wireframe, $mockup, $export, $reset or $info, or asks for a game UI kit, wireframe, mockup or PSD. $export also accepts existing UI mockup images without setup or earlier commands. Does not build screens, prefabs or scenes in a game engine.
 ---
 
 # Game UI Kit
@@ -23,9 +23,9 @@ ui_art/<kit_name>/
   sheets/     <sheet>.png and <sheet>.txt (element names, reading order)
   elements/   <family>/<name>.png   the sprites
   mockups/    <screen>__v1.json layouts: hidden working data, never shown as a result
-  preview/    wireframes/, mockups/, contact_sheet.png, compare.png, flow.png
+  preview/    wireframes/, mockups/, backgrounds/, contact_sheet.png, compare.png, flow.png
   demo/       index.html, the clickable prototype
-  export/     psd/, png/, unity/, export_report.json
+  export/     delivery/ (selected files), psd/, png/, unity/, backgrounds/, *_report.json
   .gui/       command state, kept by the scripts
   manifest.json and *_report.json
 ```
@@ -34,13 +34,14 @@ Copy every kept image out of `$CODEX_HOME/generated_images/` into the kit. Never
 
 ## Commands
 
-The user drives everything with five commands:
+The user drives everything with six commands:
 
 | Command | What it does |
 |---|---|
-| `$setup` | Asks the setup form: orientation or size, game type, gameplay. Every other command uses it. |
+| `$setup` | Asks orientation or size, game type and gameplay. Required for `$wireframe` and `$mockup`; optional for `$export`. |
 | `$wireframe` | Makes wireframe images, screen by screen or all at once. |
-| `$mockup` | Makes the UI visual mockups, then exports the design files. |
+| `$mockup` | Makes UI visual mockups, then optionally enters the shared `$export` flow. |
+| `$export` | Exports supplied mockup images or existing screens. Select UI kit with demos, component PSD, screen PSDs, Unity JSON and/or ZIP with report. Needs no setup or earlier command. |
 | `$reset` | Throws away what the current command has made and starts it again. |
 | `$info` | Shows everything saved so far: the setup, each screen's answers, results, exports and where the current command stands. Changes nothing. |
 
@@ -52,25 +53,25 @@ py -3 <skill>/scripts/state.py ui_art/<kit> begin wireframe
 
 | Prints | Do |
 |---|---|
-| `NEEDS_SETUP` | Do nothing else. Tell the user to run `$setup` first, in one line. |
+| `NEEDS_SETUP` | Applies only to `$wireframe` and `$mockup`. Tell the user to run `$setup` first. `$export` is exempt. |
 | `START` | Start the command from its first step. |
 | `RESUME` | The command was left unfinished for another one. Say so and carry on from its `step`. |
 | `CONTINUE` | The same command is still running, so typing it again changes nothing. Carry on from its `step`. |
 
 - **The latest command wins.** When the user types another command while one is unfinished, drop the old one at once, with no question and no wrap-up, and start the new one. The old one's work stays on disk.
 - **Record progress** after each step with `state.py ui_art/<kit> step "<what was just done>"`, and run `state.py ui_art/<kit> done` when the command finishes.
-- **`$reset`:** run `state.py ui_art/<kit> reset`. It deletes every file the current command created, its form answers and attachments included, and restores the text files it changed. Resetting `$setup` also deletes the setup, which blocks the other commands until `$setup` runs again. Report the counts it prints, then start the same command again from its first step.
+- **`$reset`:** run `state.py ui_art/<kit> reset`. It deletes every file the current command created, its form answers and attachments included, and restores the text files it changed. Resetting `$setup` also deletes the setup, which blocks `$wireframe` and `$mockup` until `$setup` runs again; `$export` remains available. Report the counts it prints, then start the same command again from its first step.
 
 - **`$info`** only reports, so it never runs `state.py begin`, never changes the current command and never resets anything. Run `state.py ui_art/<kit> summary` and present it in Vietnamese, in this order, skipping empty parts:
-  1. **Setup:** kit name, size and orientation (dọc or ngang), game type, gameplay. Without a setup, say only to run `$setup`.
+  1. **Setup:** kit name, size and orientation (dọc or ngang), game type, gameplay. Without a setup, report that it is absent and continue showing standalone export progress and results; do not block `$info`.
   2. **Đang làm:** the current command and its step, or that none is running, plus commands left unfinished.
   3. **Wireframe:** each screen with its function, filled areas, options count and prototype choice; screens from the full form; the image paths; the prototype path.
   4. **Mockup:** each screen with its source (UI kit and file count, references and file count, or colors, theme and UI style), background choice and note, and options count; screens from the full form; the image paths.
-  5. **Export:** formats, layouts and file paths.
+  5. **Export:** source images and dimensions, selected formats, layouts, chosen Photoshop, actual delivery paths and remaining warnings.
   6. The number of attached files kept in `inputs/`.
   End with one line on what to run next. After `$info`, carry on with the current command only when the user asks.
 
-**Which kit.** `$setup` for a new game creates `ui_art/<game_slug>/`, named after the project folder unless the user named the game, and writes that name to `ui_art/.active`. Every other command uses the kit named in `ui_art/.active`. If that file is missing and several kits have `briefs/setup.json`, ask which one as a choice, then write it.
+**Which kit.** `$setup` for a new game creates `ui_art/<game_slug>/`, named after the project folder unless the user named the game, and writes that name to `ui_art/.active`. `$export` may also create a kit and set `.active`, without making `briefs/setup.json`; reuse the active kit when it belongs to the requested game, otherwise use the user's game name or a new export-session folder. Other commands use `.active`. If it is missing, consider kits with a saved setup or an export brief/state; ask which one only when several match. Never require a setup merely to select an export session.
 
 ## Asking the user
 
@@ -104,7 +105,7 @@ Attached files are saved in `inputs/` and listed with their paths and notes in t
 2. Open the `setup` form with `--out briefs/setup.json`. The script turns the answer into `size` and `orientation`; a custom size counts as portrait when it is taller than wide.
 3. Confirm in one line: kit, size, game type. Then `state.py done`.
 
-Every layout uses the setup's `size`. The game type's description in [references/catalog.md](references/catalog.md) and the gameplay feed the tone and the layouts. A game type the user typed under Lựa chọn khác has no catalog entry; its `game_type_description`, when given, takes that place.
+Wireframe and generated mockup layouts use the setup's `size`. Standalone export layouts use each supplied image's actual size and orientation. The game type's description in [references/catalog.md](references/catalog.md) and the gameplay feed the tone and the layouts. A game type the user typed under Lựa chọn khác has no catalog entry; its `game_type_description`, when given, takes that place.
 
 ## $wireframe
 
@@ -146,19 +147,18 @@ Write layouts as [references/mockup.md](references/mockup.md) describes, at the 
 7. **Ask, as a choice, "Export không?"**
    - **Có:** step 8.
    - **Không:** ask "Sửa tiếp không?". If yes, open the `revise` form as in `$wireframe` step 3a, with `--kind mockups`; make the changes, show the result as in step 6, then ask "Export không?" again. If no, `state.py done`.
-8. **Export.** Open the `export` form with `--out briefs/export.json`, every time, since it also asks again how to treat the background. Its answer gives `formats`, `psd`, `png` or both, `layouts`, such as `home__v2`, and for a PSD `background`, `image` or `redraw`. For PSD, follow [Photoshop source and export](references/photoshop.md) to choose the right layer type, build the reusable component master, and verify the files. Run the screen export with one `--layout` per chosen layout and the form's background:
+8. **Export.** Use the same form, format choices and packaging as standalone `$export`. Finish the mockup command with `state.py done`, then `state.py begin export` on the same kit. Enter the flow below with existing screens as the source. Do not force Unity, PNG or a component PSD when it was not selected. Finish the export state when its selected outputs are delivered.
 
-```bash
-py -3 <skill>/scripts/uikit.py psd ui_art/<kit> --layout home__v2 --background image --art image --force
-```
-```bash
-py -3 <skill>/scripts/uikit.py export ui_art/<kit> --layout home__v2 --png-only --force
-```
-```bash
-py -3 <skill>/scripts/uikit.py unity ui_art/<kit> --layout home__v2 --force
-```
+## $export
 
-   Run `psd` only for `psd` and `export --png-only` only for `png`. Always run `unity`: `export/unity/<layout>.json` is the guide for assembling the screen in Unity. Report as Export describes, then `state.py done`.
+This is a standalone command. It requires neither `$setup` nor completed wireframes/mockups, and it does not run those commands as prerequisites.
+
+1. Resolve or create the session as Which kit describes, then run `state.py ui_art/<kit> begin export`. Respect START/RESUME/CONTINUE and save steps normally.
+2. For source images already attached in chat, preserve and prefill them with `delivery.py add-source ui_art/<kit> "<original file>"`, optionally `--screen <screen>`; it copies attachments and ZIP contents into `inputs/` without changing originals. Do not make the user attach them twice. If exporting existing screens, use those directly.
+3. Record `waiting for form export --out briefs/export.json` and open the `export` form every time. Keep waiting until SUBMITTED. It supports multiple simultaneous output choices. PSD choices require an explicit local Photoshop selection; PNG/UI-kit or Unity-only requests do not.
+4. For supplied images, inspect each one, infer a useful screen name when blank, and update its source entry in the export brief. Run `delivery.py prepare ui_art/<kit>` to read each image's own dimensions and allocate layout names. Its NEEDS_RECONSTRUCTION status is a work step: proceed with separation and reconstruction as [Standalone export](references/export.md) describes. Do not create a setup, reinterpret the source as an unapproved style concept, or deliver a screenshot as extracted components.
+5. Follow [Standalone export](references/export.md) for reconstruction, background multisize, selected PSD/Unity creation, dynamic Base organization, global resource deduplication and packaging. Existing kit exports enter the same work at validation/reuse, avoiding unnecessary regeneration.
+6. Run the checks for the selected outputs, build the delivery, list actual files and remaining limits in Vietnamese, report image generation count, and `state.py done`.
 
 ## Choose the role
 
@@ -186,14 +186,18 @@ Import the kit as Existing kit describes, then build the screens from it, adding
 
 ## Backgrounds and art
 
+Whenever a demo UI mockup is received or approved, inspect it and tell the user which pixels belong to the scene background, which are UI, and which characters, props or foreground layers must stay separate. Before production, follow [Background separation and multisize](references/backgrounds.md): remove baked UI, reconstruct hidden scenery, calculate outpainting from the target aspect range, protect the main subjects, and check both the clean background and the UI composite at those sizes. Apply this to supplied and generated demos, in either orientation, for every user of this skill. Identification is a visual reasoning step; the helper only calculates geometry and renders QA previews.
+
 The form's background answer decides the source:
 
-- **Provided:** use the user's files as the backgrounds, one per screen where they say which; set each as the layout's `background`.
+- **Provided:** use the user's files, one per screen where they say which. A full mockup must first go through separation and reconstruction; an existing clean plate can go straight to multisize planning and checks.
+- **Extract demo:** use the demo/reference already supplied, or the files on this option. Resolve its intended screen from the image and notes; ask only if multiple sources remain ambiguous. Preserve the scene identity while cleaning and extending the background.
 - **From the kit:** use the kit's own backgrounds and patterns. Generate one in the game's art style only for a screen the kit cannot cover, and say so first.
 - **Generate:** create new backgrounds in the art style, following the rules below.
 
 The form's background note applies to all of these. Then:
 
+- **Multisize:** use the optional `background_targets` answer and any already supplied device requirements. Otherwise state the working range from `background.default_targets(setup_size)`: base size, 16:9, 20:9 and 4:3 in the setup's orientation. This is a stated test range, not universal device support. Create a profile in `briefs/backgrounds/`, link it with `background_profile` in each affected layout, and run `background.py check` with and without that layout's UI overlay. Show the background identification, clean expanded image and multisize board. Uniform cover must preserve the image proportions; export the full master, its actual dimensions and crop/alignment guidance for Unity. If a protected subject fails or UI hides it, adjust the extension or alignment, separate the subject, or propose variants for the affected aspect ranges. Recheck after background or UI changes.
 - **Every screen has a background,** never a flat placeholder color.
   - **Home:** use a crisp scene with scenery and props that fit the game, a suitable background from the UI kit, or an abstract graphic backdrop without a specific setting. Compose the background with quieter areas behind UI controls.
   - **HUD:** generate a gameplay scene image that fits the game's art style, and put it under the HUD.
@@ -355,6 +359,8 @@ Never use `image_gen` to draw or polish a mockup, because a painted screen would
 
 ## 5. Check
 
+For each scene background, run the profile checks in [Background separation and multisize](references/backgrounds.md) and inspect the clean and UI-overlay boards. Geometric PASS does not prove clean reconstruction, scene composition or visibility behind UI. Keep the exported QA current with the image, profile and layout; profile-based exports stop on stale or failed geometry checks.
+
 ```bash
 py -3 <skill>/scripts/uikit.py qa ui_art/<kit>
 ```
@@ -365,10 +371,11 @@ A `needs_review` 9-slice means no stretchable band was found. Regenerate that el
 
 ## Export
 
-From `$mockup` step 8, export the layouts the form chose. Apply the same Photoshop rules to standalone UI element and component PSD requests, using their approved references.
+From `$export` or `$mockup` step 8, export only what the shared form selected. Follow [Standalone export and delivery](references/export.md). Apply the same Photoshop rules to standalone UI element and component PSD requests, using their approved references.
 
-- **PSD.** Follow [Photoshop source and export](references/photoshop.md) before building any PSD. Rebuild reusable UI with native shape layers and layer effects, and match the approved demo at least 95%. Keep complex icon, decor, illustration and VFX artwork as clean, full-resolution embedded Smart Objects. Keep interface copy as live text. Use [shape recipes](references/recipes.md) for supported native constructions and finish other details in Photoshop.
-- **Component master.** When delivering reusable components in PSD, create a separate `export/psd/components.psd` with each component at its optimized sprite size. Verify 9-slice at the sizes in which it will be used. Deliver it alongside any requested screen PSDs in `export/psd/<layout>.psd`.
-- **PNG.** `export --png-only` writes the flat screen to `export/png/<layout>.png`.
-- **Unity.** `unity` writes `export/unity/<layout>.json` with the hierarchy, inferred anchors, parent-relative positions, sizes, sprites, 9-slice borders, text, font and links. Identify anchors that need adjustment. This is an assembly guide for Unity.
+- **PSD.** Follow [Photoshop source and export](references/photoshop.md) before building any PSD. For standalone PSD requests too, list local installs with `scripts/photoshop.py` and require a user choice before building; save the selected `photoshop` object in `briefs/export.json`. Use that installation for screen PSDs, component masters, edits and verification. `uikit.py psd` reads this choice and stops if it is missing or invalid; reopen the export form to choose again. Never fall back to generic `Photoshop.Application` or another installed version. Rebuild reusable UI with native shape layers and layer effects, and match the approved demo at least 95%. Keep complex icon, decor, illustration and VFX artwork as clean, full-resolution embedded Smart Objects. Keep interface copy as live text. Use [shape recipes](references/recipes.md) for supported native constructions and finish other details in Photoshop.
+- **Component master.** Only when `components_psd` was selected, create a separate `export/psd/components.psd` with each component at its optimized sprite size. Verify 9-slice at the sizes in which it will be used. Deliver it with any independently selected screen PSDs in `export/psd/<layout>.psd`.
+- **UI kit and demos.** `ui_kit` is one combined selection. `delivery.py build` writes selected sprites/fonts and freshly assembled demo PNGs to `export/delivery/UI/`. Shared resources go under dynamic `Base/<actual family>/` folders; screen-specific resources go under their screen folder, with completed images in `demo/`. Create no empty or fixed category skeleton and export each identical resource only once. The low-level `uikit.py export --png-only` remains a rendering helper, not a separate form choice.
+- **Unity.** Only when `unity` was selected, `uikit.py unity` writes `export/unity/<layout>.json` with the hierarchy, inferred anchors, parent-relative positions, sizes, sprites, 9-slice borders, text, font and links. Identify anchors that need adjustment. This is an assembly guide for Unity.
+- **ZIP/report.** `zip` adds an archive and user-facing report containing only the selected delivery files and necessary dependencies. It must accompany another output choice. Internal QA reports are working data, not an implicit request for every export format.
 - **Delivery.** Check the saved PSDs and actual Photoshop renders. Use `export/psd_report.json` as the script's report, and account for any native Photoshop edits made afterward. List delivered files, verified fidelity and remaining warnings, including missing fonts and failed effects. Report the number of images generated.

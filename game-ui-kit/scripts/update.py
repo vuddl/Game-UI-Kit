@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install or update game-ui-kit and its commands ($setup, $wireframe, $mockup, $reset) from GitHub or a local zip.
+"""Install or update game-ui-kit and its commands ($setup, $wireframe, $mockup, $export, $reset, $info) from GitHub or a local zip.
 
 Removes the old gui-* commands and any command an earlier install added that is gone now."""
 import json

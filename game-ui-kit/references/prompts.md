@@ -35,6 +35,8 @@ Avoid: duplicate labels, wireframe explanations, one plain panel holding only te
 
 ## Sheet limits
 
+For extracting or expanding a scene from a demo, use the dedicated prompt and measured canvas plan in [Background separation and multisize](backgrounds.md). This produces only the background plate and separately planned foreground assets. Continue assembling UI mockups from real sprites.
+
 A generated image is only about 1024 to 1536 px on its long side, so items per sheet sets the final sprite size.
 
 - Large panels and popups: 1 to 2 per sheet.
