@@ -17,6 +17,7 @@ from PIL import Image
 
 import background
 import uikit
+import sprite_quality
 
 FORMATS = {'ui_kit', 'components_psd', 'screen_psd', 'unity', 'zip'}
 
@@ -171,6 +172,8 @@ def build(kit: Path, force: bool = False) -> dict:
     brief = brief_for(kit)
     selected = set(brief['formats'])
     layouts, assets, manifest, warnings = collect(kit, brief.get('layouts') or [])
+    if brief.get('quality_required'):
+        sprite_quality.validate_delivery(kit, [alias for v in assets.values() for alias in v['aliases']])
     folders = read(kit / 'briefs/export_folders.json', {})
     screen_folders = {uikit.screen_of(n): leaf(folders.get('screens', {}).get(uikit.screen_of(n), uikit.screen_of(n))) for n in layouts}
     if len({n.casefold() for n in screen_folders.values()}) != len(screen_folders) or any(n.casefold() == 'base' for n in screen_folders.values()):

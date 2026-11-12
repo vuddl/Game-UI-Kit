@@ -8,7 +8,7 @@ Use the base set and naming conventions from the **Yêu cầu thành phần** co
 |---|---|---|---|
 | Button | `buttons/` | 6 colors: blue, green, yellow, red, gray, dark. Plus a special button for Play, Fight, Battle or special purchases, in 3 colors: yellow, green or blue, gray | `btn_<color>`, `btn_sp_<color>`, such as `btn_yellow`, `btn_sp_green` |
 | Panel / Popup | `popups/` | At least 1 basic popup or panel | `popup_<function>` or `popup_<screen>`, such as `popup_normal`, `popup_noads` |
-| Font | `fonts/` | At most 3 fonts, or 3 weights of one font (thin, regular, bold). Best: one medium-weight font across the whole game | the font's own file name |
+| Font | `fonts/` | A compact set matched by role to the approved demo, often 1–3 families/weights where appropriate. Do not force a mismatched single font or a hard family limit; follow [typography](fonts.md). | the font's own file name |
 | Title frame | `titles/` | 6 colors: blue, green, yellow, red, gray, dark | `title_<color>`, such as `title_yellow` |
 | Background | `backgrounds/` | A gradient background, cropped small when possible, and a looping pattern of 256 x 256 px | `bg_<screen>`, `pattern_<theme>`, such as `bg_main`, `pattern_animals` |
 | Common icons | `icons/` | The list below | as listed |

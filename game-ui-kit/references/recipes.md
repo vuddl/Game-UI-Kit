@@ -1,5 +1,9 @@
 # Shape recipes
 
+For structural PNGs as well as PSDs, apply [clean edges and material alpha](sprite-quality.md). Rebuild and render at the useful delivery resolution; separate opaque geometry from shadow/glow and optical regions. `scripts/native_ui.py` provides supported parametric PNG surfaces, while this recipe schema remains the editable Photoshop workflow. Neither justifies simplifying detailed artwork into generic geometry.
+
+Preserve the approved depth, rim and reflection shapes. An ellipse highlight is appropriate only when it matches the reference. Effect defaults below are schema defaults, not universal style targets: calibrate hue, opacity/brightness, contact density, offset, spread and blur against the demo at the same visible size. Keep editable effects in a requested PSD, but compose body and effects into one PNG for ordinary sprite delivery.
+
 A recipe describes an editable Photoshop shape stack for one sprite. Keep one file per element at `style/recipes/<element>.json`, such as `style/recipes/frames/frame_activity_home.json`. The PSD export uses a valid recipe for elements routed to native UI. Follow [Photoshop source and export](photoshop.md) to decide which elements to rebuild and how to verify them.
 
 ## Workflow

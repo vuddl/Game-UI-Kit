@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import psd_recipe as recipes  # noqa: E402
 from photoshop import inspect_photoshop, run_photoshop  # noqa: E402
 import background as backgrounds  # noqa: E402
+import sprite_quality  # noqa: E402
 
 NAME_RE = re.compile(r"^[a-z0-9_]+(/[a-z0-9_]+)*$")
 STATE_RE = re.compile(r"_(normal|hover|pressed|selected|disabled|locked)$")
@@ -81,6 +82,8 @@ def on_checker(img: Image.Image) -> Image.Image:
 
 def extract_alpha(path: Path, tolerance: int, ramp: int):
     """Return (RGBA float array, key color or None), using real alpha or a flat key."""
+    if not 0 <= ramp <= 255:
+        raise ValueError('ramp must be between 0 and 255; 0 disables added feather')
     rgba = np.asarray(Image.open(path).convert("RGBA")).astype(float)
     if (rgba[..., 3] < 16).mean() > 0.02:
         rgba[rgba[..., 3] < ALPHA_FLOOR] = 0
@@ -100,7 +103,7 @@ def extract_alpha(path: Path, tolerance: int, ramp: int):
             "color. Regenerate on a flat key color.")
 
     dist = np.abs(rgb - key).max(axis=2)
-    alpha = np.clip((dist - tolerance) / ramp, 0, 1)
+    alpha = (dist > tolerance).astype(float) if ramp == 0 else np.clip((dist - tolerance) / ramp, 0, 1)
     # Remove the key color mixed into soft edge pixels.
     soft = (alpha > 0.03) & (alpha < 1)
     source = rgb.copy()
@@ -127,10 +130,16 @@ def clean_edges(source: np.ndarray, rgb: np.ndarray, alpha: np.ndarray, dist: np
     for dy in range(-radius, radius + 1):
         for dx in range(-radius, radius + 1):
             if dy or dx:
-                shifted = np.roll(dist, (dy, dx), axis=(0, 1))
-                better = shifted > best
-                best[better] = shifted[better]
-                pure[better] = np.roll(source, (dy, dx), axis=(0, 1))[better]
+                if abs(dy) >= dist.shape[0] or abs(dx) >= dist.shape[1]:
+                    continue
+                # A neighbor across the opposite canvas edge is not adjacent to this pixel.
+                ys=slice(max(0,dy),min(dist.shape[0],dist.shape[0]+dy))
+                xs=slice(max(0,dx),min(dist.shape[1],dist.shape[1]+dx))
+                sy=slice(max(0,-dy),min(dist.shape[0],dist.shape[0]-dy))
+                sx=slice(max(0,-dx),min(dist.shape[1],dist.shape[1]-dx))
+                shifted=dist[sy,sx];better=shifted>best[ys,xs]
+                best[ys,xs][better]=shifted[better]
+                pure[ys,xs][better]=source[sy,sx][better]
 
     direction = pure - key
     length = (direction ** 2).sum(axis=2)
@@ -990,35 +999,54 @@ def fit_sprite(img: Image.Image, entry: dict, item: dict, warn) -> tuple[Image.I
     return img.resize(size, Image.LANCZOS), (w - size[0]) // 2, (h - size[1]) // 2
 
 
+def text_ink_bounds(text: str, font) -> tuple[int, int, int, int]:
+    """Visible glyph bounds in the font's default drawing coordinates, without FX."""
+    bounds = font.getmask(text).getbbox()
+    if bounds is None:
+        return 0, 0, 0, 0
+    left, top, _, _ = font.getbbox(text)
+    return left + bounds[0], top + bounds[1], left + bounds[2], top + bounds[3]
+
+
 def text_layer(size: tuple[int, int], item: dict, box, font_path, warn) -> Image.Image:
-    """Render sample text centered in box on its own transparent layer, shrinking it to fit."""
+    """Center visible glyphs in a caller-measured content box, fitting both dimensions.
+
+    The caller excludes surface shadows and ornaments from this box. Decorated
+    lettering with unsupported FX is a sprite, not an approximation via stroke.
+    """
     x0, y0, x1, y1 = box
     color = ImageColor.getrgb(item.get("text_color", "#FFFFFF"))[:3]
     stroke = round(item.get("text_stroke", 0))
     text_size = round(item.get("text_size", max(12, (y1 - y0) * 0.45)))
     text = str(item["text"])
-    limit = (x1 - x0) * 0.9
-    probe = ImageDraw.Draw(Image.new("L", (1, 1)))
+    limit = ((x1 - x0) * 0.9, (y1 - y0) * 0.9)
     font = load_font(text_size, font_path)
     lacking = missing_glyphs(text, font)
     if lacking:
         warn(f'text "{text}": the font has no glyph for {lacking}')
-    while probe.textlength(text, font=font) + stroke * 2 > limit and text_size > 8:
+    bounds = text_ink_bounds(text, font)
+    def fits():
+        return (bounds[2] - bounds[0] + stroke * 2 <= limit[0] and
+                bounds[3] - bounds[1] + stroke * 2 <= limit[1])
+    while not fits() and text_size > 8:
         text_size -= 1
         font = load_font(text_size, font_path)
-    if probe.textlength(text, font=font) + stroke * 2 > limit:
-        warn(f'text "{text}" does not fit its {round(x1 - x0)} px box')
+        bounds = text_ink_bounds(text, font)
+    if not fits():
+        warn(f'text "{text}" does not fit its {round(x1 - x0)}x{round(y1 - y0)} px content box')
     center = ((x0 + x1) / 2, (y0 + y1) / 2)
+    position = (center[0] - (bounds[0] + bounds[2]) / 2,
+                center[1] - (bounds[1] + bounds[3]) / 2)
     layer = Image.new("RGBA", size, (0, 0, 0, 0))
     if stroke:
         # Masks keep soft edges clean; drawing color straight onto transparency darkens them.
         luminance = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
         outline = (20, 20, 20) if luminance > 128 else (245, 245, 245)
         mask = Image.new("L", size, 0)
-        ImageDraw.Draw(mask).text(center, text, font=font, fill=255, anchor="mm", stroke_width=stroke, stroke_fill=255)
+        ImageDraw.Draw(mask).text(position, text, font=font, fill=255, stroke_width=stroke, stroke_fill=255)
         layer = Image.merge("RGBA", [Image.new("L", size, c) for c in outline] + [mask])
     mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).text(center, text, font=font, fill=255, anchor="mm")
+    ImageDraw.Draw(mask).text(position, text, font=font, fill=255)
     layer.alpha_composite(Image.merge("RGBA", [Image.new("L", size, c) for c in color] + [mask]))
     return layer
 
@@ -3382,6 +3410,11 @@ def cmd_qa(args) -> int:
     kit = Path(args.kit)
     manifest = load_manifest(kit)
     errors, warnings = [], []
+    if (kit/'style/sprite_quality.json').exists():
+        quality=sprite_quality.check_kit(kit)
+        errors.extend(quality['issues'])
+        (kit/'export').mkdir(exist_ok=True)
+        (kit/'export/sprite_quality_numeric.json').write_text(json.dumps(quality,indent=2),encoding='utf-8')
 
     expected = set()
     for names_file in sorted((kit / "sheets").glob("*.txt")):
@@ -3485,7 +3518,7 @@ def main() -> int:
     p.add_argument("--gap", type=int, default=6, help="Parts closer than about this many px stay together")
     p.add_argument("--min-area", type=int, default=64, help="Ignore specks smaller than this many px")
     p.add_argument("--tolerance", type=int, default=24, help="Distance from key color treated as background")
-    p.add_argument("--ramp", type=int, default=60, help="Distance over which edges fade to opaque")
+    p.add_argument("--ramp", type=int, default=0, help="Extra key-color feather (0..255); 0 keeps only measured edge antialiasing")
     p.add_argument("--force", action="store_true", help="Replace existing elements")
     p.add_argument("--canonical-icons", action="store_true", help="Reject exact flipped or rotated copies of icons")
     p.set_defaults(func=cmd_slice)

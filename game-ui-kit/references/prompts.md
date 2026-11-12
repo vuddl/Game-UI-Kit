@@ -29,6 +29,7 @@ Must include: <screen-specific minimum from the catalog, plus what the brief add
 UI copy: Render only these exact English strings: <primary button labels, navigation captions, left-column IAP names, right-column feature names, and other essential text and values from the mockup copy rules>. Use illustrations, icons and numbers to communicate the other features.
 Style/medium: <style guide summary>
 Composition/framing: full screen, front-on, following the wireframe layout when supplied
+Scene relationships: <target character pose, scale and visible body extent; intentional frame/counter/panel occlusion; support surfaces for scene props>. Match the target demo's composition; no exposed torso cuts or unintentionally floating scene objects.
 Background: <approved source and visual direction>. For Home, show a crisp game scene with suitable props, a UI-kit background, or an abstract graphic backdrop. Use blur and dimming only on the parent screen behind a popup or overlay panel.
 Avoid: duplicate labels, wireframe explanations, one plain panel holding only text and buttons, watermarks
 ```
@@ -37,7 +38,7 @@ Avoid: duplicate labels, wireframe explanations, one plain panel holding only te
 
 For extracting or expanding a scene from a demo, use the dedicated prompt and measured canvas plan in [Background separation and multisize](backgrounds.md). This produces only the background plate and separately planned foreground assets. Continue assembling UI mockups from real sprites.
 
-A generated image is only about 1024 to 1536 px on its long side, so items per sheet sets the final sprite size.
+Actual generated dimensions vary. Plan sheet density conservatively and measure each returned asset against its largest placement; a requested resolution is not proof of native detail. Reduce items per sheet or render a hero asset individually when needed.
 
 - Large panels and popups: 1 to 2 per sheet.
 - Buttons, plates and cards: 4 to 6 per sheet.
@@ -47,6 +48,10 @@ A generated image is only about 1024 to 1536 px on its long side, so items per s
 Keep one family in a sheet, because shared lighting and scale are the main defense against style drift.
 
 ## Prompt template for a component sheet
+
+This template is for new component production. For extraction or quality restoration of an approved demo, use an edit prompt that locks its shape, proportions, volume, material, rim, bevel, palette, lighting and reflection geometry. Character edits must also preserve identity, expression, hair, clothes, pose and crop from the target demo, rather than locking an unsuitable reused sprite. Specify enough body extent for the target layout and its intended occlusion; extend hidden anatomy when needed without changing the approved visible appearance. Follow [scene composition and asset fit](mockup.md#scene-composition-and-asset-fit). Explicitly exclude accidental color/opacity mottling on uniform surfaces, while retaining intended texture. Follow [sprite fidelity and effect calibration](sprite-quality.md); a prompt requesting smoothness is not a quality check.
+
+For intentional title/sign/logo lettering, use the exact English copy and preserve the reference's letterforms, line breaks, material, shadow/relief and shaped highlights following [typography](fonts.md). Produce a clean composed lettering PNG at usable resolution when that is the faithful representation. The generic no-text rule below applies to reusable body sheets, not these approved lettering assets. A named font in a generation prompt is a visual reference unless the actual font file is used to render the glyphs.
 
 ```text
 Use case: stylized-concept
@@ -60,6 +65,8 @@ Constraints: no text, letters or numbers; no scene, no mockup, no drop shadow ex
 Avoid: painted checkerboard pattern, background gradient, floor shadow, watermark, overlap
 ```
 
+The no-external-shadow constraint is suitable for a body-only working image whose effects will be rebuilt. It is not permission to remove the reference's intended effects from the final sprite. Reconstruct and match their strength, softness and extent, then compose them with the body into one final PNG unless separate effect files were requested.
+
 If the output has no real transparency, use this instead and pick a key color absent from the art, usually magenta and green for pink or purple art:
 
 ```text
@@ -69,7 +76,7 @@ Constraints: never use the background color or anything close to it inside the e
 
 ## Additions by family
 
-- **Stretchable panels, buttons, plates:** "decorations only at corners and edges; plain flat center with no texture, pattern or gradient across the width, so that it can be 9-sliced."
+- **Stretchable panels, buttons, plates:** Put stretch-safe detail at the borders when the approved design allows it. Preserve its dimensional gradients and reflections. Choose a safe stretch axis, fixed aspect ratio or another rendering approach when required; never flatten the reference's face or remove its gloss just to make 9-slice easier.
 - **Buttons:** draw the normal state. The script derives disabled sprites. Use the normal sprite for press feedback in the game.
 - **Bars:** draw the track and fill separately on the same sheet, with the same height and a plain horizontal middle section.
 - **Icons:** use consistent visual weight, outline and lighting. Draw one straight base pose per icon and reuse it for directional variants that can be obtained by flipping or rotating it.

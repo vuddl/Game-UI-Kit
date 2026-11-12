@@ -2,6 +2,8 @@
 
 Use these rules for screen PSDs, reusable component masters and standalone UI element PSDs. Start from the approved design for each element. Choose geometry, colors and effects from that design and its intended use.
 
+Apply [sprite fidelity, clean edges and effect calibration](sprite-quality.md) to native and embedded artwork alike. Preserve volume and reflection geometry, and match shadow/FX darkness or brightness, contact density, softness and extent to the demo. Layer-style defaults do not establish fidelity. Editable separation belongs inside the requested PSD; ordinary sprite PNGs contain the composed body and effects unless separate files were requested.
+
 ## Select Photoshop before creating files
 
 On each PSD export, let the user choose the Photoshop installation first. The export form discovers installed versions on Windows from registry entries, running processes, common installation folders and Start Menu/Desktop shortcuts. It lists each version with its executable path, requires an explicit choice even for a single install, and accepts a manually entered `Photoshop.exe` path for an install it missed. PNG-only export needs no Photoshop choice.
@@ -20,9 +22,12 @@ For a background taken from a demo, first follow [background separation and mult
 | Any icon or decor | Preserve the approved artwork as an embedded Smart Object. Use native shapes for a flat, single-color silhouette or genuinely simple geometry that a gradient, shadow or stroke can reproduce. Use the same rule for nav icons, decorative leaves, badges and other UI art. Keep detailed originals instead of tracing them into color bands or many shapes. |
 | Standalone illustration, prop or VFX | Isolate the whole intended asset as a clean, full-resolution RGBA PNG. Embed it as a Smart Object before scaling it in the layout. This applies to any standalone VFX in the design. |
 | Avatar or other image in a shaped window | Place the complete square or rectangular image as an embedded Smart Object above a separate editable shape. Clip the image to the shape so the window, image scale and image position can be edited independently. Use the same setup for irregular windows. |
-| Interface copy | Live text layers. Treat custom lettering that is part of an illustration or a rebuilt emblem as artwork. |
+| Ordinary interface copy | Live text layers with the actual matched font and effects where supported. |
+| Decorated title, sign, logo or emblem lettering | Prioritize faithful English artwork, exported as a transparent PNG with FX composed. Embed it as a full-resolution Smart Object; preserve an editable source when available/requested rather than forcing it into plain live text. |
 
 Keep the original pixel dimensions inside each image Smart Object. Use the original file or isolate the asset at source resolution before placing it. A small screen crop or upscaled sprite cannot serve as the high-resolution source. For illustration clusters and VFX, check alpha on both light and dark backdrops. Preserve clean edges and intentional translucency, with no patches of the old backdrop or color fringing. Keep clean isolation separate from the clipping shape used to frame an image. Follow the export form's separate choice for the full-screen background.
+
+Apply [reference-based typography](fonts.md): choose fonts per role, distinguish shadow from stroke and align glyphs to the main face excluding FX margins/decorative peaks. The native text requirement for ordinary copy does not override the preferred artwork treatment for stylized lettering. Check fonts and text effects in actual Photoshop renders, not just the presence of live layers.
 
 ## Build native shapes with a compact layer stack
 

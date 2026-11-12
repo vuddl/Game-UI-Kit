@@ -11,7 +11,11 @@ Produce finished UI artwork with the built-in `image_gen` tool from the `imagege
 
 **Use English for all visible UI copy** in generated wireframes, concepts, mockups and prototypes, including titles, labels, button text, captions, badges and status messages. Translate visible copy carried over from briefs, references or earlier layouts. Check the rendered output for English copy before showing it, including after revisions.
 
+For font selection, lettering FX and placement, follow [reference-based typography](references/fonts.md). Choose fonts by role and likeness to the demo, preserve each actual effect, prioritize English PNG artwork for distinctive decorated titles/signs, and center visible glyphs within the main face rather than the full image or its shadows/decorations.
+
 Run scripts with `py -3` on Windows and `python3` elsewhere. They need Pillow and numpy. `<skill>` below is this skill's folder.
+
+For sprite production, extraction and quality repairs, follow [clean edges, material alpha and effect fidelity](references/sprite-quality.md). Improve usable resolution and smoothness while preserving the approved design, volume, bevels and shaped reflections. Preserve good antialiased contours; minimum extra feather is not a binary cut. Match shadow/FX strength, softness and spread to the demo, not a generic subtle preset. Separate effects internally and deliver one composed PNG per asset by default. Compare at the same visible size and on multiple backdrops before delivery.
 
 ## Output
 
@@ -188,11 +192,13 @@ Import the kit as Existing kit describes, then build the screens from it, adding
 
 Whenever a demo UI mockup is received or approved, inspect it and tell the user which pixels belong to the scene background, which are UI, and which characters, props or foreground layers must stay separate. Before production, follow [Background separation and multisize](references/backgrounds.md): remove baked UI, reconstruct hidden scenery, calculate outpainting from the target aspect range, protect the main subjects, and check both the clean background and the UI composite at those sizes. Apply this to supplied and generated demos, in either orientation, for every user of this skill. Identification is a visual reasoning step; the helper only calculates geometry and renders QA previews.
 
+**Reuse is a preference, not a fixed asset limit.** One or two shared backgrounds or character images are useful when they fit the screens. Judge each against the supplied mockup or approved screen concept; matching the theme or character identity alone is insufficient. If the scene framing, pose, crop or occlusion cannot match with the existing art, plan a suitable variant or regenerate that background/character within the authorized scope and image count. Follow [scene composition and asset fit](references/mockup.md#scene-composition-and-asset-fit) before choosing assets and before delivery. Present each mockup in its best intended state with coherent scenery, subjects and UI.
+
 The form's background answer decides the source:
 
 - **Provided:** use the user's files, one per screen where they say which. A full mockup must first go through separation and reconstruction; an existing clean plate can go straight to multisize planning and checks.
 - **Extract demo:** use the demo/reference already supplied, or the files on this option. Resolve its intended screen from the image and notes; ask only if multiple sources remain ambiguous. Preserve the scene identity while cleaning and extending the background.
-- **From the kit:** use the kit's own backgrounds and patterns. Generate one in the game's art style only for a screen the kit cannot cover, and say so first.
+- **From the kit:** use the kit's own backgrounds and patterns when their composition fits the target screen. A thematically similar background that cannot reproduce the demo's framing or support its subjects does not cover that screen; plan a matching variant or new background and state the image count before generating.
 - **Generate:** create new backgrounds in the art style, following the rules below.
 
 The form's background note applies to all of these. Then:
@@ -208,7 +214,7 @@ py -3 <skill>/scripts/uikit.py backdrop ui_art/<kit> <parent_screen>
 ```
 
   This writes `elements/backgrounds/bg_blur_<parent_screen>.png`. Set it as the overlay layout's `background`, and rebuild it with `--force` when the parent screen changes.
-- **Characters and items:** use them from the kit when it has them. Otherwise generate them to fit the game's art style, as `characters/` and `items/` elements. Show an item with its art, not with text or long descriptions.
+- **Characters and items:** reuse kit art when its pose, perspective, scale, visible body extent and intended occlusion fit the target mockup. Otherwise plan a matching variant or new `characters/` or `items/` element while preserving the game's art style and character identity. Never leave a torso cut exposed in open scenery; use the reference's intentional framing/occlusion or artwork with enough body for the visible area. Show an item with its art, not with text or long descriptions.
 - Generated backgrounds, scenes, characters and items are elements like any other, made with `image_gen` and listed with their image count before generating. Mark them `"role": "art"` in layouts. This is not drawing the mockup itself, which stays forbidden.
 
 ## Existing kit
@@ -236,7 +242,11 @@ Everything comes from the forms: the setup, each screen's form and the `full` fo
 | **layout** | Positions and sizes | a layout's `reference` |
 | **function** | Which controls must exist | `style/function_reference/` |
 
-**Decide the tone yourself** before generating or laying out anything, unless the form's description set it. A reference is evidence, not the default. Weigh:
+**Decide the tone yourself** before generating or laying out anything, unless the form's description set it. A reference is evidence, not the default.
+
+This discretion applies to unspecified art direction. A supplied mockup used as the layout/demo target or an approved concept remains the composition standard; do not reinterpret it merely to accommodate shared assets.
+
+Weigh:
 
 - **The game:** its genre, audience and mood, and the colors of its scene. UI must stay readable over that scene and feel part of the same world.
 - **The references:** any existing UI's colors and surface treatment, and how well they suit this game.
@@ -286,7 +296,7 @@ Plan the [base components](references/ui_kit_standard.md) before building screen
 
 Write `sheets/<sheet>.txt` with one element name per line, left to right and top to bottom, such as `buttons/btn_yellow`. Names use lowercase letters, digits and underscores, with `/` for folders.
 
-Check each sheet by eye before slicing. Regenerate it if elements overlap, contain text, drift from the anchor, or are missing.
+Check each sheet by eye before slicing. Regenerate it if elements overlap, contain unintended text, drift from the anchor, or are missing. Planned English lettering artwork is intentional; follow the typography rules rather than deleting or replacing it with generic text.
 
 ## 4. Process
 
@@ -347,19 +357,21 @@ py -3 <skill>/scripts/uikit.py mockup ui_art/<kit> --screen <screen>
 
 When there is a reference, view it, measure positions in its pixels, and set `reference`. Convert a reference of another size with `resize-layout`, which scales without distortion and reports empty margins; tell the user about them.
 
-**Text.** Apply the [mockup copy rules](references/mockup.md#mockup-copy) to the concept and assembled screen. Set retained English copy as editable text, including when building from an older wireframe or a reference in another language.
+**Text.** Apply the [mockup copy rules](references/mockup.md#mockup-copy) and [typography rules](references/fonts.md) to the concept and assembled screen. Keep ordinary English copy editable where its appearance is supported; prioritize faithful English PNG artwork for decorated titles, signs and emblems. Do not impose live text on stylized lettering or render a duplicate label over its PNG. Match text FX and place the glyphs in the measured main face, excluding shadows and decorative peaks.
 
-**Font.** Use the kit's font. If there is none, pick one following [references/fonts.md](references/fonts.md) before rendering, and report which. A `no font in the kit` warning means this step was missed.
+**Font.** Respect explicitly required fonts; otherwise compare kit/local/source candidates against each role in the approved demo following [references/fonts.md](references/fonts.md). Reuse a kit font when it fits, not merely because it exists or sorts first. Bind the actual selected file/weight, report close substitutions honestly and inspect them in the rendered screen. Do not default every role to Lilita One. A missing-font warning must be resolved or reported, and a successful glyph check alone does not establish a visual match.
 
 **Richness.** The `mockup` and `qa` commands warn with `PLAIN_SCREEN` when a screen has fewer than 3 elements of its own, or shows more text than art, and `mockup` warns with `DETAIL_GAP` when a screen is much plainer than its concept. Treat that warning as a real fault: add the screen's specific parts from its concept rather than accepting a plain panel with text. The one exception is screens of one type, such as two popups, which may share all their parts; say so instead.
 
-View each image in `preview/mockups/`, plus `<screen>_variants.png` and `<screen>_vs_reference.png` when present. Fix crowding, overlaps, wrong sizes and script warnings by editing the layout, which costs no quota, and render again. If a sprite does not fit its role, say so and offer to replace it. Check stretched sprites closely, especially at small sizes. If one looks bad, adjust `border_scale` or the size, draw bars with `fill`, and report what cannot be fixed by layout.
+View each image in `preview/mockups/`, plus `<screen>_variants.png` and `<screen>_vs_reference.png` when present. Apply [scene composition and asset fit](references/mockup.md#scene-composition-and-asset-fit) to the full composite, not just individual sprites. Fix crowding, overlaps, wrong sizes and script warnings by editing the layout, which costs no quota, and render again. If a sprite cannot fit its role without distorting the target composition, replace or regenerate it within the approved scope/count; seek approval only for work beyond that authorization. Check stretched sprites closely, especially at small sizes. If one looks bad, adjust `border_scale` or the size, draw bars with `fill`, and report what cannot be fixed by layout.
 
 Never use `image_gen` to draw or polish a mockup, because a painted screen would hide how the real sprites look. Generate only the sprites the user agreed to; report each `MISSING_ELEMENT` otherwise. Give every screen its background as Backgrounds and art describes.
 
 ## 5. Check
 
 For each scene background, run the profile checks in [Background separation and multisize](references/backgrounds.md) and inspect the clean and UI-overlay boards. Geometric PASS does not prove clean reconstruction, scene composition or visibility behind UI. Keep the exported QA current with the image, profile and layout; profile-based exports stop on stale or failed geometry checks.
+
+Before showing a result, complete the [full-composite visual review](references/mockup.md#scene-composition-and-asset-fit): exposed body cuts, unintended floating props and mismatched scene/UI relationships are quality faults even when every individual asset is attractive and scripts pass. Repair them within the existing generation limits before delivery, or report the unresolved fault rather than presenting it as finished.
 
 ```bash
 py -3 <skill>/scripts/uikit.py qa ui_art/<kit>
@@ -373,7 +385,7 @@ A `needs_review` 9-slice means no stretchable band was found. Regenerate that el
 
 From `$export` or `$mockup` step 8, export only what the shared form selected. Follow [Standalone export and delivery](references/export.md). Apply the same Photoshop rules to standalone UI element and component PSD requests, using their approved references.
 
-- **PSD.** Follow [Photoshop source and export](references/photoshop.md) before building any PSD. For standalone PSD requests too, list local installs with `scripts/photoshop.py` and require a user choice before building; save the selected `photoshop` object in `briefs/export.json`. Use that installation for screen PSDs, component masters, edits and verification. `uikit.py psd` reads this choice and stops if it is missing or invalid; reopen the export form to choose again. Never fall back to generic `Photoshop.Application` or another installed version. Rebuild reusable UI with native shape layers and layer effects, and match the approved demo at least 95%. Keep complex icon, decor, illustration and VFX artwork as clean, full-resolution embedded Smart Objects. Keep interface copy as live text. Use [shape recipes](references/recipes.md) for supported native constructions and finish other details in Photoshop.
+- **PSD.** Follow [Photoshop source and export](references/photoshop.md) before building any PSD. For standalone PSD requests too, list local installs with `scripts/photoshop.py` and require a user choice before building; save the selected `photoshop` object in `briefs/export.json`. Use that installation for screen PSDs, component masters, edits and verification. `uikit.py psd` reads this choice and stops if it is missing or invalid; reopen the export form to choose again. Never fall back to generic `Photoshop.Application` or another installed version. Rebuild reusable UI with native shape layers and layer effects, and match the approved demo at least 95%. Keep complex icon, decor, illustration and VFX artwork as clean, full-resolution embedded Smart Objects. Keep ordinary interface copy live where supported; preserve decorated lettering as artwork/Smart Objects and export its composed PNG, following the typography rules. Use [shape recipes](references/recipes.md) for supported native constructions and finish other details in Photoshop.
 - **Component master.** Only when `components_psd` was selected, create a separate `export/psd/components.psd` with each component at its optimized sprite size. Verify 9-slice at the sizes in which it will be used. Deliver it with any independently selected screen PSDs in `export/psd/<layout>.psd`.
 - **UI kit and demos.** `ui_kit` is one combined selection. `delivery.py build` writes selected sprites/fonts and freshly assembled demo PNGs to `export/delivery/UI/`. Shared resources go under dynamic `Base/<actual family>/` folders; screen-specific resources go under their screen folder, with completed images in `demo/`. Create no empty or fixed category skeleton and export each identical resource only once. The low-level `uikit.py export --png-only` remains a rendering helper, not a separate form choice.
 - **Unity.** Only when `unity` was selected, `uikit.py unity` writes `export/unity/<layout>.json` with the hierarchy, inferred anchors, parent-relative positions, sizes, sprites, 9-slice borders, text, font and links. Identify anchors that need adjustment. This is an assembly guide for Unity.
