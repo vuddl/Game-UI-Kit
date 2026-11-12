@@ -1,7 +1,7 @@
 {
   "id": "full",
   "title": "Làm nhiều màn cùng lúc",
-  "intro": "Các màn dùng chung thiết lập của màn đầu tiên. Mỗi màn tập trung vào bố cục và tính năng chính.",
+  "intro": "Chọn các màn cần làm, mô tả và ảnh tham chiếu cho từng màn.",
   "questions": [
     {
       "id": "screens",
@@ -12,6 +12,28 @@
       "options_from": "kit:screens+catalog:screens",
       "option_extras": {"describe": true, "attach": true, "suggest_from": "screens"},
       "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn", "repeat": true}
+    },
+    {
+      "id": "prototype",
+      "type": "single",
+      "title": "Có tạo prototype mô phỏng luồng giữa các màn không?",
+      "required": true,
+      "show_if": {"context": "command", "in": ["wireframe"]},
+      "options": [
+        {"value": "yes", "label": "Có"},
+        {"value": "no", "label": "Không"}
+      ]
+    },
+    {
+      "id": "options",
+      "type": "number",
+      "title": "Tạo mấy option cho mỗi màn?",
+      "hint": "Số option này áp dụng cho từng màn đã chọn.",
+      "required": true,
+      "show_if": {"context": "command", "in": ["wireframe"]},
+      "min": 1,
+      "max": 5,
+      "default": 1
     },
     {
       "id": "common",

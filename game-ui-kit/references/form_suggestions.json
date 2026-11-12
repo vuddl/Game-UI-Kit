@@ -132,6 +132,37 @@
       "text": "Khung và icon lấy cảm hứng từ kim loại, đá quý, ma thuật và huy hiệu. Nền tối giúp viền vàng, ánh sáng và icon kỹ năng nổi bật; vật phẩm thường có màu phân cấp. Có cảm giác anh hùng, quyền lực và cao cấp, với mức độ trang trí thay đổi theo màn hình."
     }
   ],
+  "screen_overviews": [
+    {"label": "Home", "text": "Màn mở đầu, giới thiệu các mode chơi, gói bán và lối vào các tính năng chính."},
+    {"label": "Inventory", "text": "Màn quản lý các vật phẩm người chơi đang sở hữu."},
+    {"label": "Equipment", "text": "Màn quản lý, thay đổi và nâng cấp trang bị nhân vật."},
+    {"label": "Daily Login", "text": "Màn điểm danh và nhận thưởng đăng nhập hằng ngày."},
+    {"label": "Mission", "text": "Màn theo dõi nhiệm vụ, tiến độ hoàn thành và phần thưởng."},
+    {"label": "Shop", "text": "Màn chứa các gói bán tiền tệ trong game, vật phẩm và các gói IAP."},
+    {"label": "Loading", "text": "Màn chờ tải dữ liệu hoặc chuyển vào game."},
+    {"label": "Level Up", "text": "Màn thông báo lên cấp, quyền lợi và phần thưởng mới."},
+    {"label": "Ranking", "text": "Màn bảng xếp hạng, thể hiện thành tích và thứ hạng người chơi."},
+    {"label": "Clan", "text": "Màn bang hội, quản lý thành viên và các hoạt động chung."},
+    {"label": "Spin", "text": "Màn vòng quay may mắn để người chơi quay và nhận thưởng."},
+    {"label": "Stats", "text": "Màn tổng hợp các chỉ số, thành tích và tiến trình người chơi."},
+    {"label": "No Ads Popup", "text": "Popup giới thiệu quyền lợi và mua gói loại bỏ quảng cáo."},
+    {"label": "Ingame", "text": "Màn chơi chính, nơi người chơi tương tác và thực hiện mục tiêu lượt chơi."},
+    {"label": "Victory / Defeat", "text": "Màn kết quả thắng hoặc thua, tổng kết lượt chơi và lựa chọn chơi tiếp."},
+    {"label": "Paused", "text": "Màn tạm dừng, cho phép tiếp tục, chơi lại hoặc rời lượt chơi."},
+    {"label": "Receive Rewards", "text": "Màn hiển thị và xác nhận nhận phần thưởng."},
+    {"label": "Congratulation", "text": "Màn chúc mừng khi người chơi đạt thành tựu hoặc cột mốc mới."},
+    {"label": "Stage / Chapter", "text": "Màn chọn màn chơi hoặc chương, theo dõi tiến độ và bắt đầu chơi."},
+    {"label": "PvP", "text": "Màn chọn chế độ đối kháng, ghép trận và theo dõi tiến trình PvP."},
+    {"label": "Character List", "text": "Màn danh sách nhân vật để xem, lựa chọn và quản lý nhân vật."},
+    {"label": "Profile", "text": "Màn hồ sơ, thể hiện thông tin cá nhân và thành tích người chơi."},
+    {"label": "Tutorial", "text": "Màn hướng dẫn thao tác và các tính năng cơ bản của game."},
+    {"label": "Battle Pass", "text": "Màn theo dõi tiến độ mùa giải, nhận thưởng và mua Battle Pass."},
+    {"label": "Pack IAP Popup", "text": "Popup giới thiệu nội dung, ưu đãi và mua một gói IAP."},
+    {"label": "Settings", "text": "Màn tùy chỉnh game, quản lý tài khoản và truy cập hỗ trợ."},
+    {"label": "Language", "text": "Màn lựa chọn ngôn ngữ hiển thị trong game."},
+    {"label": "Rate Us", "text": "Popup mời người chơi đánh giá game."},
+    {"label": "Chat", "text": "Màn trò chuyện và trao đổi tin nhắn giữa người chơi."}
+  ],
   "screens": [
     {
       "label": "Home",

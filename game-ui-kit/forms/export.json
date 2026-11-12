@@ -98,7 +98,7 @@
       "id": "photoshop",
       "type": "single",
       "title": "Bạn muốn dùng bản Photoshop nào để tạo PSD?",
-      "hint": "Các bản tìm thấy trên máy được liệt kê kèm phiên bản và đường dẫn. Chọn lại mỗi lần export, kể cả khi chỉ có một bản.",
+      "hint": "Chọn bản Photoshop để form kiểm tra và tự cấu hình tắt cảnh báo chạy script bên ngoài cho bản này. Nếu cần mở lại Photoshop, thông báo sẽ hiện tại đây.",
       "required": true,
       "show_if": {
         "question": "format",

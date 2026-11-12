@@ -48,6 +48,7 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 .drop{width:100%;background:transparent;border:1.5px dashed var(--line);border-radius:10px;padding:12px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
 .drop strong{display:block;color:var(--accent);margin-bottom:2px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .files{display:flex;flex-direction:column;gap:8px}
 .file{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px}
 .file img,.file .ph{width:56px;height:56px;object-fit:contain;border-radius:6px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
@@ -57,6 +58,16 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 .file .ff .flabel{margin:4px 0 0}
 .file.big{grid-template-columns:120px 1fr auto;align-items:start}
 .file.big img,.file.big .ph{width:120px;height:120px}
+.image-thumb{display:block;padding:0;border:0;background:transparent;cursor:zoom-in}
+.image-thumb:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.image-viewer{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:16px;border:0;background:rgba(12,12,16,.92);color:#fff;overflow:hidden}
+.image-viewer[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+.image-viewer::backdrop{background:rgba(0,0,0,.7)}
+.viewer-toolbar{display:flex;align-items:center;gap:16px;justify-content:space-between}
+.viewer-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.viewer-close{flex:none;border:1px solid #777;background:#28282e;color:#fff;padding:6px 14px}
+.viewer-stage{min-height:0;display:flex;align-items:center;justify-content:center}
+.viewer-stage img{max-width:100%;max-height:100%;object-fit:contain}
 button{font:inherit;cursor:pointer;border-radius:8px}
 .x{border:0;background:transparent;color:var(--muted);font-size:18px;padding:4px 8px}
 .x:hover{color:var(--danger)}
@@ -78,7 +89,8 @@ button{font:inherit;cursor:pointer;border-radius:8px}
 <script>
 "use strict";
 const IMG = /\.(png|jpe?g|webp|gif)$/i;
-let SPEC, CTX, VALUES = {}, UPLOADS = 0;
+let SPEC, CTX, VALUES = {}, UPLOADS = 0, PREFLIGHTS = 0;
+const photoshopChecks = new Map();
 const app = document.getElementById("app");
 
 function el(tag, attrs, ...kids){
@@ -94,6 +106,36 @@ function el(tag, attrs, ...kids){
   return e;
 }
 const fileUrl = p => "/kitfile?p=" + encodeURIComponent(p);
+
+function imageThumbnail(path, name){
+  return el("button", {class: "image-thumb", type: "button", title: "Bấm để xem ảnh lớn",
+    "aria-label": "Xem ảnh lớn: " + name, onclick: e => {
+      const opener = e.currentTarget;
+      const previousOverflow = document.body.style.overflow;
+      const viewer = el("dialog", {class: "image-viewer", "aria-label": "Xem ảnh: " + name});
+      let cleaned = false;
+      function cleanup(){
+        if (cleaned) return;
+        cleaned = true;
+        document.body.style.overflow = previousOverflow;
+        viewer.remove();
+        if (opener.isConnected) opener.focus({preventScroll: true});
+      }
+      function dismiss(){ viewer.close(); cleanup(); }
+      const close = el("button", {class: "viewer-close", type: "button", "aria-label": "Đóng ảnh lớn",
+        onclick: dismiss}, "Đóng ×");
+      const stage = el("div", {class: "viewer-stage", onclick: event => {
+        if (event.target === stage) dismiss();
+      }}, el("img", {src: fileUrl(path), alt: name}));
+      viewer.append(el("div", {class: "viewer-toolbar"}, el("span", {class: "viewer-name", text: name}), close), stage);
+      viewer.addEventListener("click", event => { if (event.target === viewer) dismiss(); });
+      viewer.addEventListener("cancel", event => { event.preventDefault(); dismiss(); });
+      viewer.addEventListener("close", cleanup, {once: true});
+      document.body.append(viewer);
+      document.body.style.overflow = "hidden";
+      viewer.showModal();
+    }}, el("img", {src: fileUrl(path), alt: name}));
+}
 
 function textInput(value, onChange, opts = {}){
   const tag = opts.multiline ? "textarea" : "input";
@@ -112,6 +154,7 @@ function descriptionChoices(source, context, area){
   const key = context ? slug(context) : "";
   const personal = SPEC.personal_suggestions?.[source]?.[key]?.[area || ""] || [];
   const selected = key && catalog.find(item => slug(item.label) === key);
+  if (source === "screen_overviews") return selected ? [selected] : [];
   if (source !== "screens"){
     const ordered = selected ? [selected, ...catalog.filter(item => item !== selected)] : catalog;
     return [...personal, ...ordered];
@@ -211,18 +254,35 @@ function fileFieldInputs(f, defs){
   });
 }
 
+function pasteImages(target, send){
+  target.addEventListener("paste", e => {
+    if (e.defaultPrevented || !e.clipboardData) return;
+    const items = [...(e.clipboardData.items || [])];
+    const files = items.length ? items.filter(item => item.kind === "file" && item.type.startsWith("image/"))
+      .map(item => item.getAsFile()).filter(Boolean) : [...(e.clipboardData.files || [])].filter(file => file.type.startsWith("image/"));
+    if (!files.length) return;
+    e.preventDefault();
+    send(files.map(file => {
+      if (/\.[a-z0-9]+$/i.test(file.name)) return file;
+      const extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[file.type] || "png";
+      return new File([file], `clipboard.${extension}`, {type: file.type});
+    }));
+  });
+}
+
 /* Files: a list of {path, name, note, ...}. accept and the question id decide where uploads go. */
-function filesWidget(list, where, hint, fieldDefs, label){
+function filesWidget(list, where, hint, fieldDefs, label, pasteTarget){
   const defs = fieldDefs || NOTE_FIELD;
   const box = el("div", {class: "files"});
   const listBox = el("div", {class: "files"});
   const picker = el("input", {type: "file", multiple: true, class: "hidden",
     accept: ".png,.jpg,.jpeg,.webp,.psd,.zip"});
   const drop = el("button", {class: "drop", type: "button", "aria-label": label},
-    label ? el("strong", {text: label}) : null, hint || "Kéo thả file vào đây hoặc bấm để chọn");
+    label ? el("strong", {text: label}) : null, hint || "Kéo thả file vào đây hoặc bấm để chọn",
+    el("div", {class: "hint", text: "Có thể dán ảnh bằng Ctrl+V vào ô mô tả hoặc vùng này."}));
   function draw(){
     listBox.replaceChildren(...list.map((f, i) => el("div", {class: fieldDefs ? "file big" : "file"},
-      IMG.test(f.path) ? el("img", {src: fileUrl(f.path), alt: ""}) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
+      IMG.test(f.path) ? imageThumbnail(f.path, f.name || f.path.split("/").pop()) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
       el("div", {class: "ff"}, el("div", {class: "nm", text: f.name || f.path.split("/").pop()}), fileFieldInputs(f, defs)),
       el("button", {class: "x", type: "button", title: "Bỏ file", "aria-label": "Bỏ file",
         onclick: () => { list.splice(i, 1); draw(); refresh(); }}, "×"))));
@@ -239,8 +299,11 @@ function filesWidget(list, where, hint, fieldDefs, label){
       } catch (e){ alert("Không tải được " + file.name + ": " + e.message); }
       UPLOADS--; status("");
     }
-    draw(); refresh();
+    if (box.isConnected) draw(); else rerender();
+    refresh();
   }
+  pasteImages(box, send);
+  if (pasteTarget) pasteImages(pasteTarget, send);
   picker.addEventListener("change", () => { send([...picker.files]); picker.value = ""; });
   drop.addEventListener("click", () => picker.click());
   drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
@@ -251,11 +314,18 @@ function filesWidget(list, where, hint, fieldDefs, label){
   return box;
 }
 
-function fieldsWidget(defs, store, opts = {}){
+function fieldsWidget(defs, store, opts = {}, fieldFiles = {}){
   return el("div", {class: defs.length === 2 && defs.every(d => d.type === "number") ? "row2" : "fields"},
-    defs.map(d => el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
-      descriptionInput(store[d.id], v => { store[d.id] = v; }, {...d, number: d.type === "number",
-        suggest_from: opts.suggest_from, suggest_context: opts.suggest_context, area: d.id}))));
+    defs.map(d => {
+      const field = el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
+        descriptionInput(store[d.id], v => { store[d.id] = v; }, {...d, number: d.type === "number",
+          suggest_from: opts.suggest_from, suggest_context: opts.suggest_context, area: d.id}));
+      if (opts.attach_fields){
+        fieldFiles[d.id] = fieldFiles[d.id] || [];
+        field.append(filesWidget(fieldFiles[d.id], `${opts.id}/${d.id}`, "Thêm ảnh mô tả vùng này", null, null, field));
+      }
+      return field;
+    }));
 }
 
 /* Extras under a chosen option: fields, a description and files. */
@@ -265,7 +335,7 @@ function optionExtras(q, opt, entry){
   if (x.fields){ entry.fields = entry.fields || {}; box.append(fieldsWidget(x.fields, entry.fields)); }
   if (x.describe) box.append(descriptionInput(entry.note, v => { entry.note = v; },
     {...x, multiline: true, placeholder: x.describe_placeholder || "Mô tả"}, () => entry.choice === "other" ? entry.label : entry.choice));
-  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, x.attach_label)); }
+  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, x.attach_label, box)); }
   return box.childElementCount ? box : null;
 }
 const slug = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "other";
@@ -284,8 +354,43 @@ const isShown = q => visible(q.show_if);
 /* required_if: the question is required only while that condition holds. */
 const isRequired = q => !!q.required || (!!q.required_if && visible(q.required_if));
 
+const photoshopPath = choice => choice?.choice === "other" ? (choice.label || "").trim().replace(/^"|"$/g, "") : (choice?.choice || "");
+
+function photoshopConfigWidget(state){
+  const slot = el("div", {class: "fields"});
+  async function check(force = false){
+    const path = photoshopPath(state.value);
+    if (!path){ slot.replaceChildren(el("p", {class: "hint", text: "Chọn bản Photoshop để kiểm tra và cấu hình tự động."})); return; }
+    let entry = photoshopChecks.get(path);
+    if (!entry || (force && entry.result)){
+      entry = {};
+      photoshopChecks.set(path, entry);
+      PREFLIGHTS++; refresh();
+      entry.pending = (async () => {
+        try {
+          const response = await fetch("/photoshop-config", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({path})});
+          entry.result = await response.json();
+          if (!response.ok) entry.result.ok = false;
+        } catch (error){ entry.result = {ok: false, error: error.message}; }
+        finally { PREFLIGHTS--; refresh(); }
+      })();
+    }
+    slot.replaceChildren(el("p", {class: "hint", role: "status", text: "Đang kiểm tra cấu hình Photoshop…"}));
+    await entry.pending;
+    if (photoshopPath(state.value) !== path) return;
+    const result = entry.result;
+    slot.replaceChildren(el("p", {class: "hint", role: "status", text: result.ok
+      ? "Photoshop đã sẵn sàng chạy script xuất PSD, không hỏi xác nhận từng lần."
+      : (result.error || "Không kiểm tra được cấu hình Photoshop.")}),
+      el("button", {class: "add", type: "button", onclick: () => check(true)}, "Kiểm tra lại"));
+  }
+  slot.check = check;
+  check();
+  return slot;
+}
+
 function renderQuestion(q){
-  const card = el("section", {class: "card q", id: "q_" + q.id});
+  const card = el("section", {class: "card q", id: "q_" + q.id, hidden: q.hidden});
   const state = VALUES[q.id] = VALUES[q.id] || {};
   card.append(el("div", {class: "qt"}, q.title, isRequired(q) ? el("span", {class: "req", text: "*"}) : null));
   if (q.hint) card.append(el("p", {class: "hint", text: q.hint}));
@@ -363,7 +468,8 @@ function renderQuestion(q){
   } else if (q.type === "fields"){
     state.value = state.value || {};
     const defs = q.fields_by ? (q.fields_by[CTX[q.fields_by.context]] || []) : q.fields;
-    body.append(fieldsWidget(defs, state.value, q));
+    if (q.attach_fields) state.field_files = state.field_files || {};
+    body.append(fieldsWidget(defs, state.value, q, state.field_files));
   } else if (q.type === "files"){
     if (!Array.isArray(state.value)) state.value = [];
     body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint, q.file_fields)));
@@ -374,15 +480,21 @@ function renderQuestion(q){
   }
   if (q.attach){
     state.files = state.files || [];
-    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, q.attach_label)));
+    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, q.attach_label, card)));
   }
-  card.append(el("div", {class: "err", text: "Câu này cần trả lời."}));
+  if (SPEC.id === "export" && q.id === "photoshop"){
+    const config = photoshopConfigWidget(state);
+    body.append(config);
+    card.addEventListener("focusout", e => { if (e.target.matches('input[type="text"]')) config.check(); });
+  }
+  card.append(el("div", {class: "err", text: SPEC.id === "export" && q.id === "photoshop"
+    ? "Chọn bản Photoshop và hoàn tất kiểm tra cấu hình bên trên." : "Câu này cần trả lời."}));
   return card;
 }
 
 let sendBtn, statusBox;
 function status(text){ if (statusBox) statusBox.textContent = text; }
-function refresh(){ if (sendBtn) sendBtn.disabled = UPLOADS > 0; }
+function refresh(){ if (sendBtn) sendBtn.disabled = UPLOADS > 0 || PREFLIGHTS > 0; }
 
 function rerender(){
   const y = window.scrollY;
@@ -394,6 +506,7 @@ function rerender(){
 function problem(q){
   const s = VALUES[q.id] || {};
   const v = s.value;
+  if (SPEC.id === "export" && q.id === "photoshop" && !photoshopChecks.get(photoshopPath(v))?.result?.ok) return true;
   q = Object.assign({}, q, {required: isRequired(q)});
   const blank = x => x === undefined || x === null || (typeof x === "string" && !x.trim());
   if (q.type === "single" || q.type === "multi"){
@@ -411,10 +524,11 @@ function problem(q){
   if (q.type === "files") return q.required && !(v || []).length;
   if (q.type === "number") return (q.required && blank(v)) || (!blank(v) && ((q.min !== undefined && v < q.min) || (q.max !== undefined && v > q.max)));
   if (q.type === "fields") return false;
-  return q.required && blank(v);
+  return q.required && blank(v) && !(q.attach && (s.files || []).length);
 }
 
 async function submit(){
+  if (UPLOADS > 0 || PREFLIGHTS > 0) return;
   const shown = SPEC.questions.filter(isShown);
   let first = null;
   for (const q of shown){
@@ -430,6 +544,7 @@ async function submit(){
     if (q.type === "multi") a.value = (s.value || []).filter(e => e.choice !== "other" || (e.label || "").trim());
     if (q.describe && s.note) a.note = s.note;
     if (q.attach && (s.files || []).length) a.files = s.files;
+    if (q.attach_fields && s.field_files) a.field_files = s.field_files;
     answers[q.id] = a;
   }
   sendBtn.disabled = true; status("Đang gửi…");
@@ -460,6 +575,7 @@ async function submit(){
     const data = await r.json();
     SPEC = data.form; CTX = data.context || {};
     for (const [k, v] of Object.entries(data.prefill || {})) VALUES[k] = JSON.parse(JSON.stringify(v));
+    for (const q of SPEC.questions) if (q.fixed_value) VALUES[q.id] = {value: {...q.fixed_value}};
   } catch (e){ app.replaceChildren(el("div", {class: "card", text: "Không tải được form: " + e.message})); return; }
   document.title = SPEC.title;
   sendBtn = el("button", {class: "send", type: "button", onclick: submit}, "Hoàn thành");

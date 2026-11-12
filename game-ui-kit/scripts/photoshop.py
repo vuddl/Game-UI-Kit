@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -75,7 +77,7 @@ DETAILS = r"""
 function Get-PhotoshopDetails($path) {
     $file = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue
     if ($file -and $file.Name -ieq 'Photoshop.exe' -and $file.VersionInfo.ProductName -match 'Photoshop') {
-        [PSCustomObject]@{path=$file.FullName; label=$file.Directory.Name; version=$file.VersionInfo.ProductVersion}
+        [PSCustomObject]@{path=$file.FullName; label=$file.Directory.Name; version=$file.VersionInfo.ProductVersion; product_name=$file.VersionInfo.ProductName}
     }
 }
 """
@@ -118,11 +120,99 @@ def inspect_photoshop(path: str) -> dict:
     return info
 
 
+def script_config_path(selected: dict) -> Path:
+    """Resolve preferences for this selected installation, including before its first launch."""
+    appdata = os.environ.get('APPDATA')
+    if not appdata:
+        raise ValueError('Không tìm thấy APPDATA để cấu hình Photoshop.')
+    label = selected.get('label') or Path(selected['path']).parent.name
+    if 'beta' in label.casefold():
+        folder = 'Adobe Photoshop (Beta)'
+    else:
+        product = selected.get('product_name') or ''
+        year = re.search(r'Adobe Photoshop(?: CC)? (20\d{2})\b', product)
+        version = re.match(r'(\d+)\.', selected.get('version') or '')
+        if year:
+            folder = 'Adobe Photoshop ' + year.group(1)
+        elif version and int(version.group(1)) >= 20:
+            folder = 'Adobe Photoshop ' + str(int(version.group(1)) + 1999)
+        else:
+            raise ValueError('Không xác định được thư mục Settings của bản Photoshop đã chọn; chưa chạy script.')
+    return Path(appdata) / 'Adobe' / folder / (folder + ' Settings') / 'PSUserConfig.txt'
+
+
+def disable_script_warning(config: Path) -> bool:
+    """Set one flag, preserving other preferences, encoding and an original backup."""
+    original = config.read_bytes() if config.exists() else b''
+    bom, encoding = b'', 'utf-8'
+    for prefix, codec in ((b'\xff\xfe', 'utf-16-le'), (b'\xfe\xff', 'utf-16-be'), (b'\xef\xbb\xbf', 'utf-8')):
+        if original.startswith(prefix):
+            bom, encoding = prefix, codec
+            break
+    try:
+        text = original[len(bom):].decode(encoding)
+    except UnicodeDecodeError:
+        encoding = 'latin-1'  # preserve arbitrary legacy bytes while editing an ASCII flag
+        text = original.decode(encoding)
+    updated, count = re.subn(r'(?im)^([ \t]*WarnRunningScripts[ \t]+)\S+', r'\g<1>0', text)
+    if not count:
+        newline = '\r\n' if '\r\n' in text else '\n'
+        updated = text + (newline if text and not text.endswith(('\n', '\r')) else '') + 'WarnRunningScripts 0' + newline
+    content = bom + updated.encode(encoding)
+    if content == original:
+        return False
+    config.parent.mkdir(parents=True, exist_ok=True)
+    backup = config.with_name(config.name + '.game-ui-kit.bak')
+    if config.exists() and not backup.exists():
+        shutil.copy2(config, backup)
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=config.parent, prefix='ps-config-', delete=False) as stream:
+            pending = Path(stream.name)
+            stream.write(content)
+        os.replace(pending, config)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+    return True
+
+
+def selected_process_starts(selected: dict) -> list[float]:
+    """Check launch times without running JSX or invoking any Photoshop COM server."""
+    records = powershell_json(r'''
+$processes = @(Get-CimInstance Win32_Process -Filter "Name='Photoshop.exe'" -ErrorAction Stop)
+if (@($processes | Where-Object { -not $_.ExecutablePath }).Count) {
+    throw 'Không đọc được đường dẫn Photoshop đang chạy. Hãy đóng Photoshop rồi thử lại.'
+}
+@($processes | Where-Object { $_.ExecutablePath -ieq $env:GUI_PHOTOSHOP_EXE } | ForEach-Object {
+    ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() / 1000.0
+}) | ConvertTo-Json -Compress
+''', env={**os.environ, 'GUI_PHOTOSHOP_EXE': str(Path(selected['path']).resolve())})
+    return records if isinstance(records, list) else ([records] if records is not None else [])
+
+
+def prepare_script_preferences(selected: dict) -> dict:
+    """Configure before -r, and stop before a warning if a running app needs a restart."""
+    try:
+        config = script_config_path(selected)
+        changed = disable_script_warning(config)
+        started = selected_process_starts(selected)
+        if any(timestamp < config.stat().st_mtime for timestamp in started):
+            return {'ok': False, 'code': 'PHOTOSHOP_RESTART_REQUIRED', 'config': str(config),
+                    'error': 'Đã cấu hình tắt cảnh báo script. Lưu công việc rồi đóng và mở lại bản Photoshop đã chọn một lần để áp dụng; chưa gửi script.'}
+        return {'ok': True, 'config': str(config), 'changed': changed}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {'ok': False, 'code': 'PHOTOSHOP_SCRIPT_CONFIG_FAILED', 'error': str(exc)}
+
+
 def run_photoshop(jsx: Path, timeout: int, selected: dict) -> dict:
     """Launch this exe only; verify app.path before evaluating any document operations."""
     exe = Path(selected['path']).resolve()
     if not exe.is_file():
         return {'ok': False, 'error': 'Bản Photoshop đã chọn không còn ở đường dẫn đã lưu. Chọn lại trong form export.'}
+    preferences = prepare_script_preferences(selected)
+    if not preferences['ok']:
+        return preferences
     deadline = time.time() + timeout
     with tempfile.TemporaryDirectory(prefix='game-ui-kit-ps-') as temp:
         result_file = Path(temp) / 'result.json'

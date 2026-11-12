@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 import zipfile
 from pathlib import Path
@@ -91,6 +92,71 @@ class StandaloneExportTests(unittest.TestCase):
         self.assertEqual({o['value'] for o in formats['options']}, delivery.FORMATS)
         self.assertTrue(all(o['label'] and o['hint'] for o in formats['options']))
         self.assertEqual([o['value'] for o in form['questions'][0]['options']], ['provided'])
+        self.assertTrue(form['questions'][0]['hidden'])
+        self.assertEqual(form['questions'][0]['fixed_value']['choice'], 'provided')
+
+    def test_export_offers_source_choice_when_kit_screens_exist(self):
+        self.save('mockups/home__v1.json', {})
+        with patch.object(ask, 'discover_photoshop', return_value=[]):
+            source = ask.load_form('export', self.kit)['questions'][0]
+        self.assertEqual({o['value'] for o in source['options']}, {'provided', 'existing'})
+        self.assertFalse(source.get('hidden', False))
+        self.assertNotIn('fixed_value', source)
+
+    @unittest.skipUnless(uikit.find_browser(), 'Requires Edge or Chrome')
+    def test_browser_hides_fixed_source_and_submits_uploaded_images(self):
+        self.save('briefs/export.json', {})
+        image = self.kit / 'inputs/home.png'
+        image.parent.mkdir()
+        Image.new('RGB', (32, 32), 'blue').save(image)
+        with patch.object(ask, 'discover_photoshop', return_value=[]):
+            form = ask.load_form('export', self.kit)
+        prefill = {'source': {'value': {'choice': 'existing'}},
+                   'screens': {'value': [{'path': 'inputs/home.png', 'screen': 'Home'}]},
+                   'format': {'value': [{'choice': 'ui_kit'}]}}
+        driver = r'''<script>
+        (async () => {
+          const result = document.createElement('pre'); document.body.append(result);
+          window.close = () => {};
+          try {
+            while (!document.querySelector('#q_source')) await new Promise(r => setTimeout(r, 20));
+            const source = document.querySelector('#q_source');
+            if (!source.hidden || getComputedStyle(source).display !== 'none') throw Error('Source question still visible');
+            if (VALUES.source.value.choice !== 'provided') throw Error('Stale source was not replaced');
+            if (!document.querySelector('#q_screens') || document.querySelector('#q_layouts')) throw Error('Wrong dependent fields');
+            await submit();
+            if (!document.querySelector('.done')) throw Error('Hidden source prevented submission');
+            result.textContent = 'EXPORT_SOURCE_PASSED';
+          } catch (error) { result.textContent = 'EXPORT_SOURCE_FAILED: ' + error.stack; }
+        })();</script>'''
+        html = (ask.FORMS / 'form.html').read_text(encoding='utf-8').replace('</body>', driver + '</body>')
+
+        class TestHandler(ask.Handler):
+            def do_GET(self):
+                if self.path == '/':
+                    self.send(200, html.encode('utf-8'), 'text/html; charset=utf-8')
+                else:
+                    super().do_GET()
+
+        out = self.kit / 'briefs/export.json'
+        server = ask.FormServer(self.kit, form, out, prefill)
+        server.RequestHandlerClass = TestHandler
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            run = subprocess.run([uikit.find_browser(), '--headless=new', '--disable-gpu', '--no-first-run',
+                                  '--no-default-browser-check', '--disable-extensions',
+                                  '--user-data-dir=' + str(self.kit / 'browser'), '--dump-dom',
+                                  '--virtual-time-budget=10000', f'http://127.0.0.1:{server.server_port}/'],
+                                 capture_output=True, timeout=45,
+                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            output = run.stdout.decode('utf-8', errors='replace')
+            self.assertTrue('<pre>EXPORT_SOURCE_PASSED</pre>' in output, output[-1500:])
+            self.assertEqual(ask.read_json(out)['source'], 'provided')
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
 
     def test_zip_alone_and_missing_input_are_rejected(self):
         for formats in [['zip'], ['ui_kit']]:

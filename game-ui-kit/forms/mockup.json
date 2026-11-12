@@ -1,7 +1,7 @@
 {
   "id": "mockup",
   "title": "Tạo UI visual mockup",
-  "intro": "Mỗi file wireframe là một màn cần làm mockup.",
+  "intro": "Làm và duyệt demo các màn trước. Chỉ tạo UI kit sprite khi bạn yêu cầu riêng sau đó.",
   "questions": [
     {
       "id": "wireframe",
@@ -48,12 +48,12 @@
     {
       "id": "theme",
       "type": "single",
-      "title": "Màu tươi sáng hay dark theme?",
+      "title": "Theme sáng hay tối?",
       "required_if": {"question": "start", "in": ["describe"]},
       "show_if": {"question": "start", "in": ["describe", "reference"]},
       "options": [
-        {"value": "bright", "label": "Tươi sáng"},
-        {"value": "dark", "label": "Dark theme"}
+        {"value": "bright", "label": "Sáng"},
+        {"value": "dark", "label": "Tối"}
       ]
     },
     {
@@ -97,23 +97,10 @@
       "multiline": true
     },
     {
-      "id": "concept_count",
-      "type": "single",
-      "title": "Dùng bao nhiêu lượt tạo ảnh concept?",
-      "hint": "Mỗi concept dùng 1 lượt tạo ảnh và giữ bố cục wireframe đã chọn. Bấm Hoàn thành để bắt đầu tạo ngay số concept này.",
-      "required": true,
-      "show_if": {"question": "kit", "in": ["no"]},
-      "options": [
-        {"value": "1", "label": "1 lượt"},
-        {"value": "2", "label": "2 lượt"},
-        {"value": "3", "label": "3 lượt"}
-      ]
-    },
-    {
       "id": "options",
       "type": "number",
-      "title": "Tạo mấy bản mockup mỗi màn?",
-      "hint": "Số bản mockup cuối được ghép từ sprite cho mỗi màn.",
+      "title": "Tạo mấy option demo cho mỗi màn?",
+      "hint": "Áp dụng cho cả màn đầu chọn style và các màn làm tiếp. Mỗi option là một phương án demo. Chỉ tạo UI kit sprite khi bạn yêu cầu riêng.",
       "required": true,
       "min": 1,
       "max": 5,

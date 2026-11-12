@@ -226,7 +226,7 @@ def screen_briefs(kit: Path, command: str) -> list[dict]:
     folder = kit / "briefs" / command
     if not folder.exists():
         return []
-    return [(p.stem, read_json(p) or {}) for p in sorted(folder.glob("*.json")) if p.stem not in ("_new", "full")]
+    return [(p.stem, read_json(p) or {}) for p in sorted(folder.glob("*.json")) if p.stem not in ("_new", "full", "demos")]
 
 
 def cmd_summary(kit: Path) -> int:
@@ -255,6 +255,8 @@ def cmd_summary(kit: Path) -> int:
         "screens": wireframes,
         "full": [{"screen": e.get("label"), "note": e.get("note"), "files": len(e.get("files") or [])}
                  for e in (full or {}).get("screens", [])],
+        "full_options": (full or {}).get("options"),
+        "full_prototype": (full or {}).get("prototype"),
         "images": list_images(kit, "preview/wireframes"),
         "prototype": "demo/index.html" if (kit / "demo" / "index.html").exists() else None,
     }
@@ -276,10 +278,15 @@ def cmd_summary(kit: Path) -> int:
         mockups.append({"screen": ", ".join(names) or record.get("screen_label") or stem,
                         "wireframe_files": len(value(answers, "wireframe") or []),
                         "source": source, "background": background.get("label"),
-                        "background_note": (answers.get("background") or {}).get("note"), "options": record.get("options")})
+                        "background_note": (answers.get("background") or {}).get("note"), "options": record.get("options"),
+                        "approved_concept": record.get("approved_concept")})
     full = read_json(kit / "briefs" / "mockup" / "full.json")
+    demos = read_json(kit / "briefs" / "mockup" / "demos.json") or {}
     summary["mockup"] = {
         "screens": mockups,
+        "style_anchor": demos.get("style_anchor"),
+        "demos": demos.get("screens") or [],
+        "sprite_production": demos.get("sprite_production") or {"requested": False},
         "full": [{"screen": e.get("label"), "note": e.get("note"), "files": len(e.get("files") or [])}
                  for e in (full or {}).get("screens", [])],
         "images": [p for p in list_images(kit, "preview/mockups") if "_variants" not in p and "_vs_reference" not in p],

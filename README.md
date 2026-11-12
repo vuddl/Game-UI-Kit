@@ -41,24 +41,29 @@ Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 
 ## Luồng `$wireframe`
 
-1. Form tạo wireframe cho một màn: màn gì, chức năng, mô tả từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), có tạo prototype không, tạo mấy option.
-2. Sau khi hiện ảnh, Codex đưa ra ba lựa chọn **Sửa chữa tiếp**, **Tiếp tục** và **Hoàn tất**.
-3. **Sửa chữa tiếp** mở form sửa có ảnh xem trước. Bạn chọn các bản cần sửa, ghi yêu cầu và đính kèm ảnh minh họa cho từng bản.
-4. **Tiếp tục** mở hai lựa chọn. **Làm nhiều màn · Ít chi tiết hơn** mở form chọn nhiều màn với mô tả và ảnh tham chiếu riêng. **Làm 1 màn · Chi tiết hơn** mở form riêng cho màn tiếp theo.
-5. **Hoàn tất** trả ảnh PNG từng màn và demo bấm thử nếu bạn chọn tạo prototype.
+1. Chọn **Làm 1 màn · Chi tiết hơn** hoặc **Làm nhiều màn · Ít chi tiết hơn** ngay từ đầu, sau `$setup`. Wireframe không cần làm một màn trước hay chốt style art. Form một màn hỏi: màn gì, chức năng, mô tả từng vùng (dọc: Top, Middle, Bottom; ngang: Top, Left, Right, Bottom), có tạo prototype không, tạo mấy option. Form nhiều màn cho chọn màn, mô tả/ảnh tham chiếu, có tạo prototype mô phỏng luồng không và số option cho mỗi màn (1–5).
+   Ô chức năng gợi ý một mô tả chung ngắn theo màn đã chọn để bạn duyệt; chi tiết từng vùng điền ở các trường bên dưới.
+   Mô tả chung và từng vùng có thể đính kèm ảnh. Dán ảnh chụp màn hình hoặc ảnh đã copy bằng **Ctrl+V** vào ô mô tả hoặc khu vực tải file; form hiện ảnh xem trước và cho phép ghi chú, xóa ảnh. Các khu vực tải file trong các form khác cũng hỗ trợ dán ảnh.
+   Bấm vào ảnh thu nhỏ để xem ảnh lớn ngay trên form. Bấm **Đóng**, nhấn **Esc** hoặc bấm nền tối để quay lại nội dung đang điền.
+2. Sau khi hiện wireframe một màn hoặc hàng loạt, Codex mở bảng hỏi **Bạn có muốn chỉnh sửa tiếp không?** với hai lựa chọn **Có / Không**.
+3. **Có** mở form sửa có ảnh xem trước. Bạn chọn các bản cần sửa, ghi yêu cầu và đính kèm ảnh minh họa cho từng bản. Sửa xong, Codex hiện kết quả và hỏi lại.
+4. Khi bạn yêu cầu làm thêm màn, có thể chọn **Làm nhiều màn · Ít chi tiết hơn** hoặc **Làm 1 màn · Chi tiết hơn**.
+5. **Không** hoàn tất ảnh PNG và demo bấm thử nếu đã chọn tạo prototype; lúc này Codex mới gợi ý dùng `$mockup` để thiết kế hình ảnh.
 
 Wireframe được dựng bằng HTML rồi chụp bằng Edge hoặc Chrome chạy ngầm. Màn có thẻ bo góc, icon, chữ dễ đọc, thanh tiến độ và thanh điều hướng có tab đang chọn. Các liên kết chuyển màn được thêm khi bạn chọn làm prototype.
 
 ## Luồng `$mockup`
 
 1. Form tạo mockup: add wireframe (PNG, ZIP...), mỗi file là một màn, có ô **Tên màn** (gợi ý thả xuống, để trống thì Codex tự đoán) và ô **Mô tả màn**. Wireframe làm từ `$wireframe` được điền sẵn. Tiếp theo: có UI kit không (có: add kit; không: add ảnh reference hoặc tự sáng tạo), màu, sáng hay dark theme, UI style (có reference thì các câu này không bắt buộc, để trống thì lấy theo reference), có background sẵn không, tạo mấy option.
-2. Sau khi hiện mockup, Codex dùng cùng menu **Sửa chữa tiếp**, **Tiếp tục** và **Hoàn tất** như `$wireframe`. Khi chọn làm nhiều màn, các màn dùng chung thiết lập của màn đầu tiên.
-3. Kết quả: ảnh mockup demo. Codex hỏi **Export không?**. Không thì hỏi có sửa tiếp không.
-4. Nếu chọn export, chuyển sang cùng quy trình `$export` bên dưới. Chỉ xuất các loại file bạn đã chọn.
+2. Chỉ có một ô **Tạo mấy option demo cho mỗi màn?** (1–5), áp dụng cho cả màn đầu chọn style và các màn làm tiếp. Sau mỗi lần chốt demo, chọn **Làm tiếp demo màn khác**, **Tạo UI kit sprite** hoặc **Dừng tại demo**. Có thể làm demo một màn hoặc nhiều màn tiếp theo theo style màn đầu; mỗi màn được duyệt riêng. Chốt demo chưa bắt đầu tạo sprite.
+3. Khi bạn yêu cầu **Tạo UI kit sprite**, Codex mới tạo bộ sprite dùng chung và riêng cho các màn có demo đã duyệt, rồi ghép lại bám theo bố cục và hình thức của từng demo đã chốt. Demo thiết kế và kết quả ghép sprite được lưu riêng để đối chiếu.
+4. Sau khi kiểm tra kết quả ghép sprite, Codex hỏi **Export không?**. Nếu có, chuyển sang cùng quy trình `$export` bên dưới và chỉ xuất các loại file bạn đã chọn. Dừng tại demo thì lưu tiến độ và ảnh đã duyệt để làm tiếp sau.
 
 ## Luồng `$export`
 
 Gọi trực tiếp khi có sẵn một hoặc nhiều ảnh UI mockup. Form nhận ảnh PNG/JPG/WebP/PSD hoặc ZIP, tên màn và ghi chú; ảnh đã gửi trong chat được điền sẵn. Skill đọc kích thước riêng của từng ảnh, nhận diện và dựng lại component, chữ, artwork và background để xuất file. Không cần tạo setup game hay chạy các lệnh thiết kế trước.
+
+Khi chọn xuất PSD, chọn bản Photoshop ngay trong form để tự kiểm tra và cấu hình tắt cảnh báo chạy script. Nếu Photoshop đang chạy với cấu hình cũ, form yêu cầu mở lại một lần rồi bấm **Kiểm tra lại**; chưa chạy script khi cấu hình chưa sẵn sàng.
 
 **Bạn muốn xuất những file nào?** Có thể chọn nhiều mục cùng lúc:
 

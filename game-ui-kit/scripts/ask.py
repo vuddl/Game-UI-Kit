@@ -36,7 +36,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from photoshop import discover_photoshop, inspect_photoshop
+from photoshop import discover_photoshop, inspect_photoshop, prepare_script_preferences
 
 SKILL = Path(__file__).resolve().parent.parent
 FORMS = SKILL / "forms"
@@ -139,7 +139,7 @@ def kit_previews(kit: Path, kind: str, screens: list[str]) -> list[dict]:
     """The rendered versions of the given screens, for the revise form, each with its image."""
     if kind == "concepts":
         folder = kit / "style" / "concepts"
-        return [{"value": image.stem, "label": "Concept đang chỉnh", "image": image.relative_to(kit).as_posix()}
+        return [{"value": image.stem, "label": "Demo đang chỉnh", "image": image.relative_to(kit).as_posix()}
                 for image in folder.glob("*.png") if image.stem in screens and image.is_file()]
     folder = kit / "preview" / kind
     options = []
@@ -203,6 +203,7 @@ def setup_size(kit: Path):
 def build_context(kit: Path) -> dict:
     size, orientation = setup_size(kit)
     context = {"kit": kit.resolve().name, "has_layouts": bool(kit_layouts(kit))}
+    context["command"] = (read_json(kit / ".gui" / "state.json") or {}).get("current")
     if orientation:
         context["orientation"] = orientation
         context["summary"] = f"Setup: {orientation}, {size[0]} × {size[1]}" if size else f"Setup: {orientation}"
@@ -226,6 +227,13 @@ def load_form(name: str, kit: Path) -> dict:
     if name in ("setup", "wireframe", "mockup", "full"):
         form["description_suggestions"] = read_json(FORM_SUGGESTIONS, {})
         form["personal_suggestions"] = personal_suggestions(name, kit, form["description_suggestions"])
+    if name == "full":
+        if build_context(kit)["command"] == "wireframe":
+            form["title"] = "Tạo nhiều màn wireframe"
+            form["intro"] = "Các màn dùng kích thước và hướng màn từ $setup. Có thể làm nhiều màn ngay từ đầu."
+        else:
+            form["title"] = "Làm tiếp demo các màn"
+            form["intro"] = "Các demo dùng style đã chốt ở màn đầu, hướng dẫn background và số option đã chọn. Chưa tạo UI kit sprite ở bước này."
     for question in form["questions"]:
         if "options_from" in question:
             source = question.pop("options_from")
@@ -244,11 +252,13 @@ def load_form(name: str, kit: Path) -> dict:
     if name == "revise" and PREVIEW["kind"] == "concepts":
         versions = next(q for q in form["questions"] if q["id"] == "versions")
         versions.update(title="Bạn muốn chỉnh gì ở concept này?", hint="Ghi rõ phần cần đổi. Có thể đính kèm ảnh minh họa.")
-        form.update(title="Sửa concept", intro="Bấm Hoàn thành để tạo bản chỉnh sửa và xem lại trước khi chốt.",
+        form.update(title="Sửa demo", intro="Bấm Hoàn thành để sửa demo và xem lại trước khi chốt. Chưa tạo UI kit sprite.",
                     questions=[versions])
     if name == "export" and not kit_layouts(kit):
         source = next(q for q in form["questions"] if q["id"] == "source")
         source["options"] = [o for o in source["options"] if o["value"] != "existing"]
+        source["hidden"] = True
+        source["fixed_value"] = {"choice": "provided", "label": source["options"][0]["label"]}
     return form
 
 
@@ -415,16 +425,13 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         screen = (answers.get("screen") or {}).get("value") or {}
         record["screen"] = screen.get("choice") if screen.get("choice") != "other" else slug(screen.get("label"))
         record["screen_label"] = screen.get("label")
-    if form_id in ("wireframe", "mockup"):
+    if form_id == "wireframe":
         record["options"] = int((answers.get("options") or {}).get("value") or 1)
     if form_id == "mockup":
-        kit_choice = (answers.get("kit") or {}).get("value") or {}
-        if kit_choice.get("choice") == "no":
-            concept = (answers.get("concept_count") or {}).get("value") or {}
-            count = concept.get("choice")
-            if count not in ("1", "2", "3"):
-                raise ValueError("Chọn từ 1 đến 3 lượt tạo ảnh concept.")
-            record["concept_count"] = int(count)
+        count = (answers.get("options") or {}).get("value", 1)
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 5:
+            raise ValueError("Chọn từ 1 đến 5 option demo cho mỗi màn.")
+        record["options"] = count
         # One screen per wireframe file. A blank name is for Codex to guess from the image.
         record["screens"] = [{"screen": slug(f.get("screen")) if (f.get("screen") or "").strip() else "",
                               "label": (f.get("screen") or "").strip(), "note": (f.get("note") or "").strip(),
@@ -447,6 +454,17 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         record["screens"] = [{"screen": e["choice"] if e["choice"] != "other" else slug(e.get("label")),
                               "label": e.get("label"), "note": e.get("note", ""), "files": e.get("files", [])}
                              for e in (answers.get("screens") or {}).get("value") or []]
+        wireframe_batch = build_context(kit)["command"] == "wireframe"
+        if "options" in answers or wireframe_batch:
+            count = (answers.get("options") or {}).get("value")
+            if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 5:
+                raise ValueError("Chọn từ 1 đến 5 option cho mỗi màn.")
+            record["options"] = count
+        if "prototype" in answers or wireframe_batch:
+            choice = ((answers.get("prototype") or {}).get("value") or {}).get("choice")
+            if choice not in ("yes", "no"):
+                raise ValueError("Chọn có hoặc không tạo prototype mô phỏng luồng.")
+            record["prototype"] = choice == "yes"
     if form_id == "export":
         record["formats"] = [e["choice"] for e in (answers.get("format") or {}).get("value") or []]
         formats = set(record["formats"])
@@ -582,7 +600,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         data = self.rfile.read(length)
         try:
-            if url.path == "/upload":
+            if url.path == "/photoshop-config" and self.server.form["id"] == "export":
+                selected = inspect_photoshop(json.loads(data.decode("utf-8"))["path"])
+                result = prepare_script_preferences(selected)
+                self.send_json(200, result)
+            elif url.path == "/upload":
                 query = parse_qs(url.query)
                 files = store_upload(self.server.kit, self.server.form["id"], (query.get("where") or ["files"])[0],
                                      (query.get("name") or ["file"])[0], data)

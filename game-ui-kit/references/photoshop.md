@@ -12,6 +12,12 @@ The submitted `briefs/export.json` contains `photoshop: {path, label, version}`.
 
 Use the same selected installation for the component master, follow-up scripts, reopening and rendering. For standalone PSD requests outside the screen export form, run `py -3 <skill>/scripts/photoshop.py`, show the found versions and paths as a choice, then save the user's selection under `photoshop` in the export brief. If nothing is found, explain that a valid Photoshop path or an installation is needed before creating the PSD.
 
+## Configure script execution in the export form
+
+When the user selects a Photoshop installation (or finishes entering its path) in the export form, `/photoshop-config` verifies that executable and prepares `WarnRunningScripts 0` in its own user Settings folder's `PSUserConfig.txt`. Preserve unrelated settings and encoding, keep an original `.game-ui-kit.bak` when editing an existing file, and avoid rewriting an already-correct file. This setting disables external-script warnings for that selected Photoshop version, not just this skill's scripts.
+
+The form shows the check result and a **Kiểm tra lại** button. Submission waits for a successful check. If Photoshop is not running, the preference is in place before its first scripted launch. If it was already running before the configuration was written, show `PHOTOSHOP_RESTART_REQUIRED`: the user saves their work, closes and reopens that Photoshop once, then clicks **Kiểm tra lại**. Do not close Photoshop, discard documents, click through its script-warning dialog or repeatedly launch JSX. The runner checks the preference and process start time again before every `-r` call; on restart/configuration errors it returns before sending a script. A version with an unresolvable Settings location requires correcting its metadata/path rather than editing another version's preferences.
+
 ## Choose the layer type
 
 For a background taken from a demo, first follow [background separation and multisize](backgrounds.md). Keep the complete cleaned and expanded master at its actual pixel dimensions inside the background Smart Object. The screen PSD shows its uniform cover crop; do not discard the off-canvas image data or stretch the source independently along X and Y. Keep foreground subjects and UI separate, and deliver the full clean background PNG and its multisize QA/Unity guidance alongside screen PSDs. A redraw choice must preserve the same composition and crop behavior.

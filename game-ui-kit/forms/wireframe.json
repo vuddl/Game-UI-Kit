@@ -15,16 +15,20 @@
       "id": "function",
       "type": "text",
       "title": "Mô tả chức năng màn",
+      "hint": "Đây chỉ là mô tả chung của màn. Muốn mô tả chi tiết từng vùng, hãy điền vào các trường đã phân vùng bên dưới.",
       "required": true,
-      "suggest_from": "screens",
+      "suggest_from": "screen_overviews",
       "suggest_context": "screen",
-      "multiline": true
+      "multiline": true,
+      "attach": true,
+      "attach_hint": "Thêm ảnh mô tả chức năng màn"
     },
     {
       "id": "areas",
       "type": "fields",
       "title": "Mô tả từng vùng",
       "hint": "Vùng để trống thì Codex tự quyết.",
+      "attach_fields": true,
       "suggest_from": "screens",
       "suggest_context": "screen",
       "fields_by": {
