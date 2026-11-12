@@ -13,6 +13,8 @@ Inspect the original at full resolution. Tell the user in Vietnamese what will b
 
 Record the source image and this classification in `briefs/backgrounds/<screen>_analysis.md`. Use the user's specific keep/remove instructions. Ask only when an ambiguous scene-versus-UI classification changes the intended result. For a popup's blurred parent screen, prepare the parent's clean scene first; UI intentionally visible in a derived blurred screenshot stays a separate composite backdrop, not the reusable clean scenery master.
 
+Before committing to a shared master, apply [scene composition and asset fit](mockup.md#scene-composition-and-asset-fit) to each target screen. One or two reusable backgrounds are a useful starting point, not a limit: create a matching scene variant when the demo needs different framing, support surfaces or subject placement that the shared plate cannot provide. Preserve intentional counter/panel occlusion when separating a cropped character; if a later layout reveals the cut, plan enough body artwork rather than leaving the character floating or distorting the UI to conceal it. Include these decisions in the existing analysis and announced generation scope.
+
 ## Calculate expansion before generating
 
 Use device sizes/aspect ratios already in the brief, chat or optional `background_targets` form answer. Resolve ratio-only requests to explicit test resolutions and state them. Otherwise use `background.default_targets(base_size)`: the actual base size plus portrait 1080x1920, 1080x2400 and 1536x2048; swap the latter pairs for landscape. State this working range. A new orientation or a ratio outside that range needs another check.
