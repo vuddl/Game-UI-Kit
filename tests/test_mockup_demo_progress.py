@@ -71,6 +71,22 @@ class MockupDemoProgressTests(unittest.TestCase):
             with self.subTest(count=count), self.assertRaises(ValueError):
                 ask.apply_answers('mockup', self.kit, {'options': {'value': count}})
 
+    def test_wireframe_link_rejects_invalid_urls_on_submit(self):
+        for url in ('', 'www.figma.com/design/example', 'javascript:alert(1)', 'https:///example.org',
+                    'https://user:password@example.org', 'https://example.org:99999'):
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                ask.apply_answers('mockup', self.kit, {'wireframe': {'value': [{'url': url}]}})
+
+    def test_summary_counts_wireframe_uploads_and_links(self):
+        answers = {'wireframe': {'value': [
+            {'path': 'preview/wireframes/home.png', 'screen': 'Home'},
+            {'url': 'https://www.figma.com/design/example?node-id=12%3A3', 'screen': 'Shop'},
+        ]}}
+        self.save('briefs/mockup/home.json', ask.apply_answers('mockup', self.kit, answers))
+        screen = self.summary()['screens'][0]
+        self.assertEqual(screen['wireframe_files'], 1)
+        self.assertEqual(screen['wireframe_links'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()
