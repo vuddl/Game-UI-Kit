@@ -4,7 +4,7 @@ Cập nhật: 09/11/2026. Danh sách gom từ các phiên ngày 06, 07 và 09/11
 
 ## Trạng thái
 
-Mục 1–20 đã làm xong trên máy ngày 09/11, **chưa commit**. Đã thử bằng script, trình duyệt và Photoshop trên máy này. **Chưa thử một vòng thật trong Codex** (`$setup` → `$wireframe` → `$mockup` → export).
+Mục 1–20 đã làm xong ngày 09/11, commit `3d228fb` và đã đẩy lên GitHub. **Codex trên máy này chưa cài bản này** (vẫn là `f8f4461`). Đã thử bằng script, trình duyệt và Photoshop trên máy này. **Chưa thử một vòng thật trong Codex** (`$setup` → `$wireframe` → `$mockup` → export).
 
 | Mục | Nội dung | Trạng thái |
 |---|---|---|
