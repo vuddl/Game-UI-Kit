@@ -89,7 +89,6 @@ py -3 <skill>/scripts/ask.py <form> ui_art/<kit> --out briefs/<file>.json
 
 **Stay in the turn while the form is open.** The user expects you to carry on by yourself the moment they press Hoàn thành, and once your turn ends nothing can wake you. So:
 
-- On Windows, if `py -3` cannot find Python, use the Python executable bundled with Codex. If the browser times out opening `FORM_URL`, run the same form command outside the sandbox with the shell's approval mechanism and `--no-browser`. Keep that session running. From outside the sandbox, check that the new URL returns HTTP 200 (for example, `curl.exe --noproxy "*" --max-time 5 -s -o NUL -w "%{http_code}" <url>`), then give the user the new link. If the embedded browser still times out, open that verified URL in the system browser.
 - Give the user the `FORM_URL` link in one short progress line, never as your final message. Never end the turn with "fill in the form and I'll wait" or similar.
 - Keep the command running until it prints `SUBMITTED`. If the shell hands it back still running, keep polling that same session for more output. If it exits printing `WAITING`, run `ask.py ui_art/<kit> --wait` and keep waiting the same way. `still waiting for the form` lines are only a heartbeat.
 - As soon as it prints `SUBMITTED`, go straight on with the next step of the command, in the same turn.

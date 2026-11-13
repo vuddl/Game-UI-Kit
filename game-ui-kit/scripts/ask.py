@@ -32,7 +32,6 @@ import zipfile
 from collections import defaultdict
 from contextlib import closing
 from datetime import datetime, timezone
-from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -664,25 +663,9 @@ def serve(args, kit: Path) -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     state = wait_file(kit)
     state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(json.dumps({"url": url, "out": args.out, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    try:
-        with closing(HTTPConnection(*server.server_address, timeout=5)) as conn:
-            conn.request("GET", "/")
-            response = conn.getresponse()
-            if response.status != 200 or not response.read():
-                raise OSError(f"Form page failed (HTTP {response.status})")
-    except (OSError, HTTPException) as exc:
-        server.shutdown()
-        server.server_close()
-        message = (f"Cannot open form at {url}: {exc}. "
-                   "If localhost is restricted, retry the same command outside the sandbox "
-                   "using the shell approval mechanism.")
-        if args.child:
-            state.write_text(json.dumps({"startup_error": message}), encoding="utf-8")
-        print(message, file=sys.stderr)
-        return 1
-    state.write_text(json.dumps({"url": url, "out": args.out, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
     print(f"FORM_URL {url}", flush=True)
     if not args.no_browser:
         try:
@@ -743,10 +726,6 @@ def start_detached(args, kit: Path) -> int:
     for _ in range(150):
         info = read_json(state)
         if info:
-            if "startup_error" in info:
-                print(info["startup_error"], file=sys.stderr)
-                state.unlink(missing_ok=True)
-                return 1
             print(f"FORM_URL {info['url']}", flush=True)
             return 0
         time.sleep(0.1)
