@@ -35,7 +35,7 @@ h1{margin:0 0 6px;font-size:26px}
 .opt .oh{color:var(--muted);font-size:13px}
 .opt img.thumb{display:block;max-width:220px;max-height:140px;border-radius:6px;border:1px solid var(--line);margin-top:6px}
 .extra{margin:8px 0 6px 27px;display:flex;flex-direction:column;gap:8px}
-input[type=text],input[type=number],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);font:inherit}
+input[type=text],input[type=number],input[type=url],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);font:inherit}
 textarea{min-height:64px;resize:vertical}
 input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .suggestions{max-height:230px;overflow:auto;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
@@ -49,7 +49,10 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 .drop strong{display:block;color:var(--accent);margin-bottom:2px}
 .drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop.compact{width:auto;align-self:flex-start;padding:4px 9px;font-size:13px}
+.drop.compact strong{margin:0}
 .files{display:flex;flex-direction:column;gap:8px}
+.files:empty{display:none}
 .file{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px}
 .file img,.file .ph{width:56px;height:56px;object-fit:contain;border-radius:6px;background:var(--field);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--muted)}
 .file .nm{font-size:13px;word-break:break-all}
@@ -58,16 +61,31 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 .file .ff .flabel{margin:4px 0 0}
 .file.big{grid-template-columns:120px 1fr auto;align-items:start}
 .file.big img,.file.big .ph{width:120px;height:120px}
+.file.link-source{grid-template-columns:minmax(0,1fr) auto;align-items:start;padding:8px 10px}
+.link-source .ff{gap:8px}
+.description-box{min-width:0;gap:6px;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+.description-box:focus-within{border-color:var(--accent)}
+.description-box textarea{display:block;margin:0;padding:0 4px;min-height:44px;border:0;background:transparent;outline:none}
+.description-attachments{display:flex;flex-wrap:wrap;gap:8px}
+.description-attachments:empty{display:none}
+.description-attachment{position:relative}
+.description-box .description-attachment :is(img,.ph){display:grid;place-items:center;width:64px;height:64px;object-fit:contain;border-radius:6px;background:var(--card);color:var(--muted);font-size:11px}
+.description-attachment .x{position:absolute;top:3px;right:3px;width:22px;height:22px;padding:0;border-radius:50%;background:#25232e;color:#fff;font-size:15px;line-height:1}
+.description-box .attachment-add{width:30px;height:30px;padding:0;font-size:20px;line-height:1}
 .image-thumb{display:block;padding:0;border:0;background:transparent;cursor:zoom-in}
 .image-thumb:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .image-viewer{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:16px;border:0;background:rgba(12,12,16,.92);color:#fff;overflow:hidden}
 .image-viewer[open]{display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px}
+.image-viewer.with-details[open]{grid-template-rows:auto minmax(0,1fr) auto}
+.image-viewer.file-details[open]{grid-template-rows:auto auto;align-content:start}
 .image-viewer::backdrop{background:rgba(0,0,0,.7)}
 .viewer-toolbar{display:flex;align-items:center;gap:16px;justify-content:space-between}
 .viewer-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .viewer-close{flex:none;border:1px solid #777;background:#28282e;color:#fff;padding:6px 14px}
 .viewer-stage{min-height:0;display:flex;align-items:center;justify-content:center}
 .viewer-stage img{max-width:100%;max-height:100%;object-fit:contain}
+.viewer-details{width:min(100%,680px);max-height:35dvh;overflow:auto;justify-self:center}
+.viewer-details textarea{color:var(--text)}
 button{font:inherit;cursor:pointer;border-radius:8px}
 .x{border:0;background:transparent;color:var(--muted);font-size:18px;padding:4px 8px}
 .x:hover{color:var(--danger)}
@@ -107,12 +125,17 @@ function el(tag, attrs, ...kids){
 }
 const fileUrl = p => "/kitfile?p=" + encodeURIComponent(p);
 
-function imageThumbnail(path, name){
-  return el("button", {class: "image-thumb", type: "button", title: "Bấm để xem ảnh lớn",
-    "aria-label": "Xem ảnh lớn: " + name, onclick: e => {
+function attachmentThumbnail(path, name, details){
+  const image = IMG.test(path);
+  const action = image ? "Xem ảnh lớn" : "Xem tệp đính kèm";
+  const preview = image ? el("img", {src: fileUrl(path), alt: name})
+    : el("span", {class: "ph", text: path.match(/\.([a-z0-9]{1,5})$/i)?.[1].toUpperCase() || "TỆP"});
+  return el("button", {class: "image-thumb", type: "button", title: name,
+    "aria-label": action + ": " + name, onclick: e => {
       const opener = e.currentTarget;
       const previousOverflow = document.body.style.overflow;
-      const viewer = el("dialog", {class: "image-viewer", "aria-label": "Xem ảnh: " + name});
+      const viewer = el("dialog", {class: "image-viewer", "aria-label": action + ": " + name});
+      if (details) viewer.classList.add(image ? "with-details" : "file-details");
       let cleaned = false;
       function cleanup(){
         if (cleaned) return;
@@ -122,24 +145,28 @@ function imageThumbnail(path, name){
         if (opener.isConnected) opener.focus({preventScroll: true});
       }
       function dismiss(){ viewer.close(); cleanup(); }
-      const close = el("button", {class: "viewer-close", type: "button", "aria-label": "Đóng ảnh lớn",
+      const close = el("button", {class: "viewer-close", type: "button", "aria-label": image ? "Đóng ảnh lớn" : "Đóng tệp",
         onclick: dismiss}, "Đóng ×");
-      const stage = el("div", {class: "viewer-stage", onclick: event => {
-        if (event.target === stage) dismiss();
-      }}, el("img", {src: fileUrl(path), alt: name}));
-      viewer.append(el("div", {class: "viewer-toolbar"}, el("span", {class: "viewer-name", text: name}), close), stage);
+      viewer.append(el("div", {class: "viewer-toolbar"}, el("span", {class: "viewer-name", text: name}), close));
+      if (image) {
+        const stage = el("div", {class: "viewer-stage", onclick: event => {
+          if (event.target === stage) dismiss();
+        }}, el("img", {src: fileUrl(path), alt: name}));
+        viewer.append(stage);
+      }
+      if (details) viewer.append(el("div", {class: "viewer-details"}, details()));
       viewer.addEventListener("click", event => { if (event.target === viewer) dismiss(); });
       viewer.addEventListener("cancel", event => { event.preventDefault(); dismiss(); });
       viewer.addEventListener("close", cleanup, {once: true});
       document.body.append(viewer);
       document.body.style.overflow = "hidden";
       viewer.showModal();
-    }}, el("img", {src: fileUrl(path), alt: name}));
+    }}, preview);
 }
 
 function textInput(value, onChange, opts = {}){
   const tag = opts.multiline ? "textarea" : "input";
-  const input = el(tag, {type: opts.multiline ? undefined : (opts.number ? "number" : "text"),
+  const input = el(tag, {type: opts.multiline ? undefined : (opts.number ? "number" : opts.type || "text"),
     placeholder: opts.placeholder || "", min: opts.min, max: opts.max});
   input.value = value ?? "";
   input.addEventListener("input", () => onChange(opts.number ? (input.value === "" ? null : Number(input.value)) : input.value));
@@ -237,105 +264,215 @@ function descriptionInput(value, onChange, opts, getContext = () => ""){
   return el("div", {}, input, list);
 }
 
-/* Fields under each file. Default: one optional note. A field with suggestions gets a dropdown list. */
-const NOTE_FIELD = [{id: "note", placeholder: "Mô tả file này (không bắt buộc)"}];
+/* Fields under each uploaded file. */
+const NOTE_FIELD = [{id: "note", label: "Ghi chú tệp (không bắt buộc)", multiline: true}];
+const isLink = source => Object.hasOwn(source, "url");
+
+function validSourceLink(value){
+  const link = value.trim();
+  if (!/^https?:\/\/[^/\\?#\s]+/i.test(link) || /[\s\\]/.test(link)) return false;
+  try {
+    const url = new URL(link);
+    return Boolean(url.hostname && !url.username && !url.password);
+  } catch {
+    return false;
+  }
+}
+
 let LISTS = 0;
 function fileFieldInputs(f, defs){
   return defs.map(d => {
     const change = v => { f[d.id] = v; };
     const input = d.suggest_from ? descriptionInput(f[d.id], change, d, () => f.screen) : textInput(f[d.id], change, d);
-    const wrap = el("div", {}, d.label ? el("div", {class: "flabel", text: d.label}) : null, input);
+    if (d.label) (input.matches("input, textarea") ? input : input.querySelector("input, textarea")).setAttribute("aria-label", d.label);
+    const wrap = el("div", {}, d.label ? el("div", {class: "flabel", text: d.label}) : null);
     if (d.suggestions && d.suggestions.length){
       const id = "list_" + (++LISTS);
       input.setAttribute("list", id);
       wrap.append(el("datalist", {id}, d.suggestions.map(s => el("option", {value: s}))));
     }
+    const attachment = fieldAttachment(f, d.id, "file_fields", input, d.label, {description: d.multiline});
+    if (!d.multiline) wrap.append(input);
+    wrap.append(attachment);
     return wrap;
   });
 }
 
-function pasteImages(target, send){
+function linkFields(link, where){
+  const url = textInput(link.url, value => { link.url = value; },
+    {type: "url", placeholder: "https://www.figma.com/design/…"});
+  url.setAttribute("aria-label", "Liên kết wireframe");
+  const description = textInput(link.note, value => { link.note = value; },
+    {multiline: true, placeholder: "Frame cần xem hoặc chi tiết cần chú ý"});
+  description.setAttribute("aria-label", "Mô tả liên kết (không bắt buộc)");
+  return el("div", {class: "ff"},
+    el("div", {}, el("div", {class: "flabel", text: "Liên kết wireframe"}), url),
+    el("div", {}, el("div", {class: "flabel", text: "Mô tả liên kết (không bắt buộc)"}),
+      fieldAttachment(link, "note", where + "/links", description, "mô tả liên kết", {description: true, imagesOnly: true})));
+}
+
+function pasteFiles(target, send){
   target.addEventListener("paste", e => {
     if (e.defaultPrevented || !e.clipboardData) return;
-    const items = [...(e.clipboardData.items || [])];
-    const files = items.length ? items.filter(item => item.kind === "file" && item.type.startsWith("image/"))
-      .map(item => item.getAsFile()).filter(Boolean) : [...(e.clipboardData.files || [])].filter(file => file.type.startsWith("image/"));
+    const files = [...(e.clipboardData.files || [])];
+    if (!files.length) files.push(...[...(e.clipboardData.items || [])].filter(item => item.kind === "file")
+      .map(item => item.getAsFile()).filter(Boolean));
     if (!files.length) return;
     e.preventDefault();
     send(files.map(file => {
-      if (/\.[a-z0-9]+$/i.test(file.name)) return file;
-      const extension = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}[file.type] || "png";
+      if (!file.type.startsWith("image/") || /\.[a-z0-9]+$/i.test(file.name)) return file;
+      const extension = file.type.split("/")[1].replace("jpeg", "jpg").split("+")[0];
       return new File([file], `clipboard.${extension}`, {type: file.type});
     }));
   });
 }
 
-/* Files: a list of {path, name, note, ...}. accept and the question id decide where uploads go. */
-function filesWidget(list, where, hint, fieldDefs, label, pasteTarget){
+/* Files: a list of {path, name, note, ...}. Artwork inputs also unpack supported assets from ZIP. */
+function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpack, allowLinks,
+  compact = false, description = false, imagesOnly = false} = {}){
   const defs = fieldDefs || NOTE_FIELD;
-  const box = el("div", {class: "files"});
-  const listBox = el("div", {class: "files"});
+  const box = el("div", {class: description ? "files description-box" : "files"});
+  const listBox = el("div", {class: description ? "description-attachments" : "files"});
+  const linksBox = allowLinks ? el("div", {class: "files"}) : null;
   const picker = el("input", {type: "file", multiple: true, class: "hidden",
-    accept: ".png,.jpg,.jpeg,.webp,.psd,.zip"});
-  const drop = el("button", {class: "drop", type: "button", "aria-label": label},
-    label ? el("strong", {text: label}) : null, hint || "Kéo thả file vào đây hoặc bấm để chọn",
-    el("div", {class: "hint", text: "Có thể dán ảnh bằng Ctrl+V vào ô mô tả hoặc vùng này."}));
+    accept: imagesOnly ? ".png,.jpg,.jpeg,.webp,.gif" : (assets ? ".png,.jpg,.jpeg,.webp,.psd,.zip" : undefined)});
+  const action = imagesOnly ? "Thêm ảnh" : "Thêm ảnh hoặc tệp";
+  const addLabel = description && !imagesOnly && label?.startsWith("Thêm ") ? label
+    : label ? `${action} cho ${label}` : action;
+  const drop = description
+    ? el("button", {class: "drop compact attachment-add", type: "button", "aria-label": addLabel,
+      title: addLabel}, "+")
+    : el("button", {class: compact ? "drop compact" : "drop", type: "button",
+    title: compact ? "Bấm để chọn, kéo thả hoặc dán từ clipboard" : undefined,
+    "aria-label": addLabel},
+    el("strong", {text: compact ? "+ " + action : (label || action)}),
+    compact ? null : el("div", {}, hint || "Kéo thả tệp vào đây hoặc bấm để chọn.",
+      el("div", {class: "hint", text: "Bạn cũng có thể dán bằng Ctrl+V."})));
   function draw(){
-    listBox.replaceChildren(...list.map((f, i) => el("div", {class: fieldDefs ? "file big" : "file"},
-      IMG.test(f.path) ? imageThumbnail(f.path, f.name || f.path.split("/").pop()) : el("div", {class: "ph"}, (f.path.split(".").pop() || "").toUpperCase()),
-      el("div", {class: "ff"}, el("div", {class: "nm", text: f.name || f.path.split("/").pop()}), fileFieldInputs(f, defs)),
-      el("button", {class: "x", type: "button", title: "Bỏ file", "aria-label": "Bỏ file",
-        onclick: () => { list.splice(i, 1); draw(); refresh(); }}, "×"))));
+    const files = [];
+    const links = [];
+    list.forEach((f, i) => {
+      const link = allowLinks && isLink(f);
+      const removeLabel = link ? "Bỏ liên kết" : (description && IMG.test(f.path) ? "Bỏ ảnh" : "Bỏ file");
+      const remove = el("button", {class: "x", type: "button", title: removeLabel, "aria-label": removeLabel,
+        onclick: () => { list.splice(i, 1); draw(); refresh(); }}, "×");
+      if (link){
+        links.push(el("div", {class: "file link-source"}, linkFields(f, where), remove));
+        return;
+      }
+      const name = f.name || f.path.split("/").pop();
+      const ext = f.path.match(/\.([a-z0-9]{1,5})$/i)?.[1];
+      if (description){
+        const details = imagesOnly ? undefined : () => fileFieldInputs(f, defs);
+        files.push(el("div", {class: "description-attachment"}, attachmentThumbnail(f.path, name, details), remove));
+        return;
+      }
+      const preview = IMG.test(f.path) ? attachmentThumbnail(f.path, name)
+        : el("div", {class: "ph", title: name}, ext?.toUpperCase() || "TỆP");
+      files.push(el("div", {class: fieldDefs ? "file big" : "file"}, preview,
+        el("div", {class: "ff"}, el("div", {class: "nm", text: name}), fileFieldInputs(f, defs)), remove));
+    });
+    listBox.replaceChildren(...files);
+    if (linksBox) linksBox.replaceChildren(...links);
   }
   async function send(files){
-    for (const file of files){
-      UPLOADS++; refresh(); status("Đang tải " + file.name + "…");
-      try {
-        const r = await fetch(`/upload?where=${encodeURIComponent(where)}&name=${encodeURIComponent(file.name)}`,
-          {method: "POST", body: file});
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || r.statusText);
-        for (const f of data.files) if (!list.some(x => x.path === f.path)) list.push({path: f.path, name: f.name, note: ""});
-      } catch (e){ alert("Không tải được " + file.name + ": " + e.message); }
-      UPLOADS--; status("");
+    if (imagesOnly){
+      const images = files.filter(file => IMG.test(file.name));
+      if (images.length !== files.length) alert("Mô tả liên kết nhận ảnh PNG, JPG, WebP hoặc GIF.");
+      files = images;
     }
-    if (box.isConnected) draw(); else rerender();
-    refresh();
+    if (!files.length) return;
+    UPLOADS++; refresh();
+    try {
+      for (const file of files){
+        status("Đang tải " + file.name + "…");
+        try {
+          const query = new URLSearchParams({where, name: file.name});
+          if (!assets) query.set("kind", "reference");
+          if (unpack) query.set("unpack", "1");
+          const r = await fetch("/upload?" + query, {method: "POST", body: file});
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || r.statusText);
+          for (const f of data.files) if (!list.some(x => x.path === f.path)) list.push({path: f.path, name: f.name, note: ""});
+        } catch (e){ alert("Không tải được " + file.name + ": " + e.message); }
+      }
+      if (box.isConnected) draw(); else rerender();
+    } finally {
+      UPLOADS--;
+      if (!UPLOADS) status("");
+      refresh();
+    }
   }
-  pasteImages(box, send);
-  if (pasteTarget) pasteImages(pasteTarget, send);
+  pasteFiles(box, send);
+  if (target && !description) pasteFiles(target, send);
   picker.addEventListener("change", () => { send([...picker.files]); picker.value = ""; });
   drop.addEventListener("click", () => picker.click());
-  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]); });
+  function allowDrop(node){
+    node.addEventListener("dragover", e => {
+      if (e.defaultPrevented || !e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault(); drop.classList.add("over");
+    });
+    node.addEventListener("dragleave", () => drop.classList.remove("over"));
+    node.addEventListener("drop", e => {
+      if (e.defaultPrevented || !e.dataTransfer.files.length) return;
+      e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]);
+    });
+  }
+  allowDrop(box);
+  if (target && !description) allowDrop(target);
   draw();
-  box.append(listBox, drop, picker);
-  return box;
+  box.append(listBox);
+  if (description) box.append(target);
+  box.append(drop, picker);
+  if (!linksBox) return box;
+  const addLink = el("button", {class: "add", type: "button", onclick: () => {
+    list.push({url: "", note: ""});
+    draw();
+    linksBox.lastElementChild.querySelector('input[type="url"]').focus();
+  }}, "+ Thêm liên kết");
+  return el("div", {class: "files"}, box, addLink, linksBox);
 }
 
-function fieldsWidget(defs, store, opts = {}, fieldFiles = {}){
+function fieldAttachment(owner, id, where, target, label, {description, imagesOnly, unpack} = {}){
+  owner.field_files ||= {};
+  const list = owner.field_files[id] ||= [];
+  return filesWidget(list, `${where}/${id}`, {target, label, compact: true, description, imagesOnly, unpack});
+}
+
+function fieldsWidget(defs, store, opts, owner){
   return el("div", {class: defs.length === 2 && defs.every(d => d.type === "number") ? "row2" : "fields"},
     defs.map(d => {
-      const field = el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
-        descriptionInput(store[d.id], v => { store[d.id] = v; }, {...d, number: d.type === "number",
-          suggest_from: opts.suggest_from, suggest_context: opts.suggest_context, area: d.id}));
-      if (opts.attach_fields){
-        fieldFiles[d.id] = fieldFiles[d.id] || [];
-        field.append(filesWidget(fieldFiles[d.id], `${opts.id}/${d.id}`, "Thêm ảnh mô tả vùng này", null, null, field));
-      }
-      return field;
+      const input = descriptionInput(store[d.id], v => { store[d.id] = v; }, {...d, number: d.type === "number",
+        suggest_from: opts.suggest_from, suggest_context: opts.suggest_context, area: d.id});
+      const attachment = fieldAttachment(owner, d.id, opts.id, input, d.label,
+        {description: d.multiline, unpack: opts.attach_fields});
+      return el("div", {}, el("div", {class: "flabel", text: d.label + (d.required ? " *" : "")}),
+        d.multiline ? attachment : [input, attachment]);
     }));
 }
 
 /* Extras under a chosen option: fields, a description and files. */
-function optionExtras(q, opt, entry){
+function optionExtras(q, opt, entry, nameInput){
   const x = Object.assign({}, q.option_extras || {}, opt);
   const box = el("div", {class: "extra"});
-  if (x.fields){ entry.fields = entry.fields || {}; box.append(fieldsWidget(x.fields, entry.fields)); }
-  if (x.describe) box.append(descriptionInput(entry.note, v => { entry.note = v; },
-    {...x, multiline: true, placeholder: x.describe_placeholder || "Mô tả"}, () => entry.choice === "other" ? entry.label : entry.choice));
-  if (x.attach){ entry.files = entry.files || []; box.append(filesWidget(entry.files, `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`, x.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, x.attach_label, box)); }
+  const where = `${q.id}/${entry.choice === "other" ? slug(entry.label || "other") : entry.choice}`;
+  if (nameInput) box.append(fieldAttachment(entry, "label", where, nameInput, nameInput.placeholder));
+  if (x.fields){
+    entry.fields ||= {};
+    box.append(fieldsWidget(x.fields, entry.fields, {id: where}, entry));
+  }
+  entry.files ||= [];
+  if (x.describe){
+    const note = descriptionInput(entry.note, v => { entry.note = v; }, {...x, multiline: true,
+      placeholder: x.describe_placeholder || "Mô tả"}, () => entry.choice === "other" ? entry.label : entry.choice);
+    box.append(x.attach_assets
+      ? fieldAttachment(entry, "note", where, note, "mô tả", {description: true})
+      : filesWidget(entry.files, where, {target: note, description: true, unpack: x.attach, label: x.attach_label}));
+  }
+  if (x.attach && (x.attach_assets || !x.describe)){
+    box.append(filesWidget(entry.files, where, {hint: x.attach_hint, label: x.attach_label,
+      assets: x.attach_assets, unpack: !x.attach_assets}));
+  }
   return box.childElementCount ? box : null;
 }
 const slug = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "other";
@@ -430,14 +567,13 @@ function renderQuestion(q){
         const customs = state.value.filter(e => e.choice === "other");
         opts.append(el("div", {class: "group", text: o.label}));
         customs.forEach(entry => {
-          const box = el("div", {class: "custom"}, el("div", {class: "top"},
-            textInput(entry.label, v => { entry.label = v; }, {placeholder: o.placeholder}),
+          const name = textInput(entry.label, v => { entry.label = v; }, {placeholder: o.placeholder});
+          const box = el("div", {class: "custom"}, el("div", {class: "top"}, name,
             el("button", {class: "x", type: "button", title: "Bỏ", "aria-label": "Bỏ", onclick: () => {
               state.value = state.value.filter(e => e !== entry); rerender(); }}, "×")));
-          if (o.describe && !(q.option_extras || {}).describe) box.append(descriptionInput(entry.note, v => { entry.note = v; },
-            {...o, multiline: true, placeholder: o.describe_placeholder || "Mô tả"}, () => entry.label));
-          const extra = optionExtras(q, {value: "other"}, entry);
-          if (extra){ extra.style.marginLeft = "0"; box.append(extra); }
+          const extra = optionExtras(q, o, entry, name);
+          extra.style.marginLeft = "0";
+          box.append(extra);
           opts.append(box);
         });
         opts.append(el("button", {class: "add", type: "button", onclick: () => {
@@ -448,11 +584,9 @@ function renderQuestion(q){
         input.addEventListener("change", () => { state.value = {choice: "other", label: ""}; rerender(); });
         const row = el("div", {class: "opt"}, el("label", {}, input, el("div", {text: o.label})));
         if (chosen){
-          const extra = el("div", {class: "extra"}, textInput(chosen.label, v => { chosen.label = v; }, {placeholder: o.placeholder}));
-          if (o.describe) extra.append(descriptionInput(chosen.note, v => { chosen.note = v; },
-            {...o, multiline: true, placeholder: o.describe_placeholder || "Mô tả"}, () => chosen.label));
-          const more = optionExtras(q, {value: "other"}, chosen);
-          if (more) extra.append(...more.childNodes);
+          const name = textInput(chosen.label, v => { chosen.label = v; }, {placeholder: o.placeholder});
+          const extra = optionExtras(q, o, chosen, name);
+          extra.prepend(name);
           row.append(extra);
         }
         opts.append(row);
@@ -461,26 +595,26 @@ function renderQuestion(q){
     body.append(opts);
   } else if (q.type === "text"){
     if (state.value === undefined) state.value = "";
-    body.append(el("div", {class: "fields"}, descriptionInput(state.value, v => { state.value = v; }, {...q, placeholder: q.placeholder || "Câu trả lời"})));
+    const input = descriptionInput(state.value, v => { state.value = v; },
+      {...q, multiline: true, placeholder: q.placeholder || "Câu trả lời"});
+    body.append(questionField(q, state, input));
   } else if (q.type === "number"){
     if (state.value === undefined || state.value === null) state.value = q.default ?? null;
-    body.append(el("div", {class: "fields"}, textInput(state.value, v => { state.value = v; }, {number: true, min: q.min, max: q.max})));
+    const input = textInput(state.value, v => { state.value = v; }, {number: true, min: q.min, max: q.max});
+    body.append(questionField(q, state, input));
   } else if (q.type === "fields"){
     state.value = state.value || {};
     const defs = q.fields_by ? (q.fields_by[CTX[q.fields_by.context]] || []) : q.fields;
-    if (q.attach_fields) state.field_files = state.field_files || {};
-    body.append(fieldsWidget(defs, state.value, q, state.field_files));
+    body.append(fieldsWidget(defs, state.value, q, state));
   } else if (q.type === "files"){
     if (!Array.isArray(state.value)) state.value = [];
-    body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id, q.attach_hint, q.file_fields)));
+    body.append(el("div", {class: "fields"}, filesWidget(state.value, q.id,
+      {hint: q.attach_hint, fieldDefs: q.file_fields, assets: true, allowLinks: q.allow_links})));
   }
   if (q.describe){
+    const input = textInput(state.note, v => { state.note = v; }, {multiline: true});
     body.append(el("div", {class: "fields"}, el("div", {class: "flabel", text: q.describe_label || "Mô tả thêm"}),
-      textInput(state.note, v => { state.note = v; }, {multiline: true})));
-  }
-  if (q.attach){
-    state.files = state.files || [];
-    body.append(el("div", {class: "fields"}, filesWidget(state.files, q.id + "/_question", q.attach_hint || "Thêm ảnh ref: kéo thả hoặc bấm để chọn", null, q.attach_label, card)));
+      fieldAttachment(state, "note", q.id, input, q.describe_label || "mô tả thêm", {description: true})));
   }
   if (SPEC.id === "export" && q.id === "photoshop"){
     const config = photoshopConfigWidget(state);
@@ -488,8 +622,18 @@ function renderQuestion(q){
     card.addEventListener("focusout", e => { if (e.target.matches('input[type="text"]')) config.check(); });
   }
   card.append(el("div", {class: "err", text: SPEC.id === "export" && q.id === "photoshop"
-    ? "Chọn bản Photoshop và hoàn tất kiểm tra cấu hình bên trên." : "Câu này cần trả lời."}));
+    ? "Chọn bản Photoshop và hoàn tất kiểm tra cấu hình bên trên." : (q.allow_links
+      ? "Thêm tệp hoặc liên kết wireframe hợp lệ bắt đầu bằng https:// hoặc http://."
+      : "Câu này cần trả lời.")}));
   return card;
+}
+
+function questionField(q, state, input){
+  state.files ||= [];
+  const description = q.type === "text";
+  const attachment = filesWidget(state.files, q.id + "/_question",
+    {target: input, label: q.attach_label || q.title, unpack: q.attach, compact: true, description});
+  return el("div", {class: "fields"}, description ? attachment : [input, attachment]);
 }
 
 let sendBtn, statusBox;
@@ -514,14 +658,19 @@ function problem(q){
     if (q.required && !entries.length) return true;
     for (const e of entries){
       if (e.choice === "other" && blank(e.label)) return true;
-      const opt = Object.assign({}, q.option_extras || {}, (q.options || []).find(o => o.value === e.choice) || {});
+      const option = e.choice === "other" ? q.other : q.options.find(o => o.value === e.choice);
+      const opt = Object.assign({}, q.option_extras || {}, option);
       if (opt.attach_required && !(e.files || []).length) return true;
       if (opt.describe_required && blank(e.note)) return true;
       for (const f of (opt.fields || [])) if (f.required && blank((e.fields || {})[f.id])) return true;
     }
     return false;
   }
-  if (q.type === "files") return q.required && !(v || []).length;
+  if (q.type === "files"){
+    const sources = v || [];
+    return (q.required && !sources.length)
+      || (q.allow_links && sources.some(source => isLink(source) && !validSourceLink(source.url)));
+  }
   if (q.type === "number") return (q.required && blank(v)) || (!blank(v) && ((q.min !== undefined && v < q.min) || (q.max !== undefined && v > q.max)));
   if (q.type === "fields") return false;
   return q.required && blank(v) && !(q.attach && (s.files || []).length);
@@ -543,13 +692,19 @@ async function submit(){
     const a = {value: s.value};
     if (q.type === "multi") a.value = (s.value || []).filter(e => e.choice !== "other" || (e.label || "").trim());
     if (q.describe && s.note) a.note = s.note;
-    if (q.attach && (s.files || []).length) a.files = s.files;
-    if (q.attach_fields && s.field_files) a.field_files = s.field_files;
+    if (s.files?.length) a.files = s.files;
+    if (s.field_files) a.field_files = s.field_files;
     answers[q.id] = a;
   }
   sendBtn.disabled = true; status("Đang gửi…");
   try {
-    const r = await fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({answers})});
+    const payload = JSON.stringify({answers}, (key, value) => {
+      if (key === "files" && Array.isArray(value) && !value.length) return undefined;
+      if (key !== "field_files" || !value) return value;
+      const fields = Object.entries(value).filter(([, files]) => files.length);
+      return fields.length ? Object.fromEntries(fields) : undefined;
+    });
+    const r = await fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: payload});
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
     const timer = el("p", {class: "hint", role: "timer", text: "Tab sẽ tự đóng sau 5 giây."});

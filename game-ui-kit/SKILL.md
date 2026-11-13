@@ -73,9 +73,23 @@ py -3 <skill>/scripts/state.py ui_art/<kit> begin wireframe
   4. **Mockup:** each screen with its source, background and options count; draft and approved demo paths per screen, the style anchor and whether sprite production was requested; assembled mockup paths when present. Keep demo approval distinct from sprite production.
   5. **Export:** source images and dimensions, selected formats, layouts, chosen Photoshop, actual delivery paths and remaining warnings.
   6. The number of attached files kept in `inputs/`.
-  End with one line on what to run next. After `$info`, carry on with the current command only when the user asks.
+  End with the relevant command suggestions below. After `$info`, carry on with the current command only when the user asks.
 
 **Which kit.** `$setup` for a new game creates `ui_art/<game_slug>/`, named after the project folder unless the user named the game, and writes that name to `ui_art/.active`. `$export` may also create a kit and set `.active`, without making `briefs/setup.json`; reuse the active kit when it belongs to the requested game, otherwise use the user's game name or a new export-session folder. Other commands use `.active`. If it is missing, consider kits with a saved setup or an export brief/state; ask which one only when several match. Never require a setup merely to select an export session.
+
+### Suggested next commands
+
+After a command finishes, append **Lệnh tiếp theo** below the result in the final chat reply. Put each suggested command on its own bullet in the format `$tên_lệnh: mô tả ngắn` and list the most useful option first. Present suggestions for the user to invoke. If the user already chose the next command, proceed with that choice. Show suggestions after required forms and review choices are resolved.
+
+| After | Suggested commands |
+|---|---|
+| `$setup` | `$wireframe: Tạo bố cục cho một hoặc nhiều màn.` `$mockup: Tạo demo giao diện từ ảnh hoặc link wireframe.` `$export: Xuất UI kit, PSD, JSON Unity hoặc ZIP nếu bạn đã có ảnh mockup.` |
+| `$wireframe` | `$mockup: Thiết kế giao diện từ wireframe đã tạo.` `$wireframe: Tạo bố cục cho các màn còn lại.` |
+| `$mockup` | Suggest `$mockup` for more screens or continued work from approved demos. Suggest `$export` when the user has an exportable screen or a mockup image to supply and has not just declined export. |
+| `$export` | `$info: Xem các file đã xuất và tiến độ của kit.` Suggest `$setup` if the kit has no setup and the user wants to design new screens. |
+| `$info` | Suggest resuming an unfinished command or use the latest completed stage above. With no setup, suggest `$setup` for starting a design or `$export` for a supplied mockup. |
+
+`$reset` restarts the current command as described above. Use that command's suggestions once it finishes.
 
 ## Asking the user
 
@@ -97,9 +111,9 @@ py -3 <skill>/scripts/ask.py <form> ui_art/<kit> --out briefs/<file>.json
 - `TIMEOUT` means nothing was saved: ask the user whether to open the form again.
 - If the form cannot be served or opened at all, say why, then ask its questions in chat as a numbered list, as the last resort.
 
-Attached files are saved in `inputs/` and listed with their paths and notes in the answers. Use those paths, and view the images before using them. Files no answer refers to any more are deleted, so nothing piles up. A ZIP is unpacked; PSD files are kept as they are.
+Description and note fields place attachment thumbnails, text and a compact **+** control in the same box. Attach through the picker, drag and drop, or clipboard paste. Click a thumbnail to view the image or edit the attachment note where available. References are stored in `inputs/`. Existing reference areas can unpack ZIP files containing only supported artwork. The artwork pickers for wireframes, source mockups, UI kits and backgrounds accept PNG, JPG, WebP, PSD or ZIP and unpack supported artwork from ZIP files.
 
-Forms accept clipboard images with Ctrl+V in upload areas and their associated description fields. In the wireframe form, the screen description accepts text and/or images (`answers.function.files`); each region keeps its text in `answers.areas.value` and its reference images in `answers.areas.field_files.<region>`. Read these images as references for that screen or region, including when its text is empty.
+Read attachments from the saved `answers`, including references in nested options and per-file fields. A field's attachments are listed under `files` or `field_files.<field id>` alongside its value. View attached images before using them and read other files as relevant to their field. Files no saved answer refers to are deleted. In the wireframe form, `answers.function.files` can supply the entire screen description. Each region keeps its text in `answers.areas.value` and its references in `answers.areas.field_files.<region>`.
 
 Click an attached image thumbnail to view the original image in a large overlay in the form. Close it with the close button, Escape or the overlay background; the form keeps its text, attachments and scroll position.
 
@@ -111,7 +125,7 @@ Click an attached image thumbnail to view the original image in a large overlay 
 
 1. `state.py begin setup`, creating the kit as Which kit says.
 2. Open the `setup` form with `--out briefs/setup.json`. The script turns the answer into `size` and `orientation`; a custom size counts as portrait when it is taller than wide.
-3. Confirm in one line: kit, size, game type. Then `state.py done`.
+3. Run `state.py done`. Confirm the kit name, size and game type in the final reply and append the suggestions for `$setup`.
 
 Wireframe and generated mockup layouts use the setup's `size`. Standalone export layouts use each supplied image's actual size and orientation. The game type's description in [references/catalog.md](references/catalog.md) and the gameplay feed the tone and the layouts. A game type the user typed under Lựa chọn khác has no catalog entry; its `game_type_description`, when given, takes that place.
 
@@ -124,13 +138,13 @@ Wireframes are clean, readable screens drawn from the layout in a headless brows
 2. **Draw it.** Write `options` layouts as `mockups/<screen>__v1.json`, `__v2` and so on, as Wireframe layouts describes, then run `uikit.py wireframe ui_art/<kit> --screen <screen>`. View each image in `preview/wireframes/` and show them. Make the options genuinely different and say in one line how.
 3. **Ask about revisions after showing the wireframes.** This applies to both single-screen and batch results, including after each revision. Record `waiting for wireframe revision choice` with `state.py step`, then open the interactive question **"Bạn có muốn chỉnh sửa tiếp không?"** with exactly **Có** and **Không**, using `request_user_input_async` when available. Follow Asking the user for the numbered-choice fallback when the tool is unavailable. Wait for the answer; do not finish the command or suggest `$mockup` while this choice is pending. If the user's current message already explicitly answers this revision question, act on that answer directly.
    - **Có:** open the revision form in step 3a.
-   - **Không:** finalize in step 5; only then suggest `$mockup` as an optional next step.
+   - **Không:** finalize in step 5.
 3a. **Revise.** Open the `revise` form with `--out briefs/revise.json --kind wireframes --screens <screen>`, listing every screen just shown, comma-separated. It shows each version with its image; the user ticks the ones to change, writes the change for each, and may attach images with a note each, such as "nút bo tròn như ảnh này". Its record lists `versions`, each with `layout`, `change` and `files`, plus a `common` answer for all. View every attached image, change only the ticked layouts, draw and show them again, then ask step 3 again.
 3b. **Choose the scope.** At the beginning of a wireframe run, or when the user explicitly asks to add more screens, ask "Bạn muốn làm tiếp theo cách nào?" with exactly these two choices. This scope menu does not replace the revision question after showing results.
    - **Làm nhiều màn · Ít chi tiết hơn** opens the batch form in step 4. Focus on each screen's core features and use shared patterns to keep the batch consistent.
    - **Làm 1 màn · Chi tiết hơn** opens the single-screen form in step 1. Give the next screen a dedicated pass on layout and details before showing it.
 4. **Multiple screens.** Open the `full` form with `--out briefs/wireframe/full.json` while the current command is `wireframe`. It asks for screens, whether to create a flow prototype, and 1–5 options for each screen. Draw every selected screen at the size and orientation from `$setup`, using the batch brief's `options` count for each screen, its notes/reference images and the shared request/files. Do not inherit a previous single-screen count or require an existing wireframe. Make the options meaningfully different. View and show every screen's images, then go to the revision question in step 3; do not skip directly to completion or `$mockup`.
-5. **Result, after the user declines further revisions.** List every wireframe image path in `preview/wireframes/`. No layout JSON is shown or delivered. For a batch, use its own `prototype` choice; for single-screen work, use the screen form's choice. If yes, only now add `goto` to buttons that change screen, run `uikit.py flow ui_art/<kit> --wireframe --start <first selected screen>` and give the path of `demo/index.html`. Include all selected screens in the prototype. The flow uses the chosen variant for each screen, or its first option if none was chosen; state which options the demo uses. Then `state.py done` and suggest `$mockup` if the user wants to move on to visual design. Do not automatically start `$mockup`.
+5. **Result, after the user declines further revisions.** List every wireframe image path in `preview/wireframes/`. No layout JSON is shown or delivered. For a batch, use its own `prototype` choice; for single-screen work, use the screen form's choice. If yes, only now add `goto` to buttons that change screen, run `uikit.py flow ui_art/<kit> --wireframe --start <first selected screen>` and give the path of `demo/index.html`. Include all selected screens in the prototype. The flow uses the chosen variant for each screen, or its first option if none was chosen; state which options the demo uses. Then run `state.py done` and append the suggestions for `$wireframe`.
 
 ### Wireframe layouts
 
@@ -145,9 +159,10 @@ Write layouts as [references/mockup.md](references/mockup.md) describes, at the 
 
 Demo design and sprite production are separate phases. **Chốt demo / Chốt concept approves only that image and its design. It never requests sprite creation, extraction, background production or assembly.** This also applies when resuming older briefs that already contain `approved_concept`. Continue with the demo action menu until the user explicitly requests **Tạo UI kit sprite**, or clearly asks for sprite production in chat. A request to continue demos, submit a form or approve a style does not start sprite production.
 
-1. **Form.** Open the `mockup` form with `--out briefs/mockup/_new.json`. It records the wireframes, UI kit/references/art style, background and one demo count per screen (`options`, 1–5), used for both the first style demo and later screens. Do not ask for a separate concept/generation count. **Each wireframe file is one screen,** listed in the record's `screens` with its `label`, `note` and `file`; this kit's wireframes come prefilled with their names.
-   - A screen with an empty `screen` has no name: view its image, name it yourself from what it shows, and say which name you gave.
-   - Use the submitted wireframe for each screen. If several versions of the same screen are listed, use the one the user explicitly confirmed when it is among those files. Ask which one only if the choice is still ambiguous.
+1. **Form.** Open the `mockup` form with `--out briefs/mockup/_new.json`. It records the wireframes, UI kit/references/art style, background and one demo count per screen (`options`, 1–5), used for both the first style demo and later screens. Do not ask for a separate concept/generation count. Each uploaded wireframe or link is one screen, listed in `screens` with its `label`, `note` and either `file` or `url`. The kit's existing wireframes come prefilled. Users can submit just links, or combine them with uploads.
+   - Each linked wireframe has a URL and an optional description with inline image attachments. Open the URL with an available connector or browser and inspect the intended frame. Use the description and its images in that link entry's `field_files.note` under `answers.wireframe.value` to locate the frame or guide the layout. If you cannot open the link, tell the user and continue with the description or other references if they define the screen. Ask for an accessible link or an image if you still need the layout.
+   - A screen with an empty `screen` has no name. Name it from its linked frame, description or images, and say which name you gave.
+   - Use the submitted wireframe for each screen. If several versions of the same screen are listed, use the one the user explicitly confirmed when it is among those sources. Ask which one only if the choice is still ambiguous.
    - Rename the file to `briefs/mockup/<first screen>.json`. Start with one representative screen to establish the style; keep all other submitted screens queued for demos.
 2. **First demo and style.** Use Role A or B as reference guidance, without entering component production. The submitted `options` authorizes that many initial complete demo images; with a supplied UI kit, attach representative kit art as style references. On `SUBMITTED`, state the count and generate the demo images in the same turn. Follow Style anchor to revise and approve the selected demo. Save the exact approved image and establish the style anchor. Reuse saved approvals on resume; ask about generation only when exceeding the authorized scope/count. In older briefs, the retired `concept_count` is historical data; do not use it as a second count or repeat already generated demos.
 3. **Demo action menu.** After each demo approval, offer **Làm tiếp demo màn khác**, **Tạo UI kit sprite**, and **Dừng tại demo**. If the user's message already selects one, act on it directly.
@@ -175,7 +190,7 @@ This is a standalone command. It requires neither `$setup` nor completed wirefra
 3. Record `waiting for form export --out briefs/export.json` and open the `export` form every time. Keep waiting until SUBMITTED. When no kit screens exist, the form uses supplied images automatically and hides the source question; when both sources are available, let the user choose. It supports multiple simultaneous output choices. PSD choices require an explicit local Photoshop selection; the form checks/configures script execution for that installation immediately and shows readiness or the one-time restart requirement before submission, as [Photoshop configuration](references/photoshop.md#configure-script-execution-in-the-export-form) describes. PNG/UI-kit or Unity-only requests do not require Photoshop configuration.
 4. For supplied images, inspect each one, infer a useful screen name when blank, and update its source entry in the export brief. Run `delivery.py prepare ui_art/<kit>` to read each image's own dimensions and allocate layout names. Its NEEDS_RECONSTRUCTION status is a work step: proceed with separation and reconstruction as [Standalone export](references/export.md) describes. Do not create a setup, reinterpret the source as an unapproved style concept, or deliver a screenshot as extracted components.
 5. Follow [Standalone export](references/export.md) for reconstruction, background multisize, selected PSD/Unity creation, dynamic Base organization, global resource deduplication and packaging. Existing kit exports enter the same work at validation/reuse, avoiding unnecessary regeneration.
-6. Run the checks for the selected outputs, build the delivery, list actual files and remaining limits in Vietnamese, report image generation count, and `state.py done`.
+6. Run the checks for the selected outputs, build the delivery and run `state.py done`. In the final reply, list actual files and remaining limits in Vietnamese, report image generation count, and append the suggestions for `$export`.
 
 ## Choose the role
 
@@ -232,7 +247,7 @@ py -3 <skill>/scripts/uikit.py backdrop ui_art/<kit> <parent_screen>
 
 ## Existing kit
 
-The kit's files are in `inputs/` after the form, a ZIP already unpacked.
+The supplied UI kit artwork is in `inputs/` after the form, with supported assets from ZIP files already unpacked.
 
 1. **Sheets:** copy each into `sheets/`, write its `.txt` names by viewing it, then slice as in step 4. If the sheet has a painted background or touching elements that the script rejects, report this rather than regenerating, because regenerating would replace the user's art.
 2. **Loose sprites:** preview the names, because file names become element names. The original file name is also recorded, and exports name the sprite's layer by it, so renaming here never changes what the user's own files are called. Give button base names no state suffix, such as `btn_yellow`, so states work, using `--map` to rename:

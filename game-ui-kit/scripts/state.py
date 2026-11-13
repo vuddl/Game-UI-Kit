@@ -275,8 +275,10 @@ def cmd_summary(kit: Path) -> int:
                      "ui_style_description": record.get("ui_style_description"), "note": value(answers, "style_note")}
             source.update({k: v for k, v in style.items() if v})
         names = [s.get("label") or s.get("screen") or "(Codex đoán)" for s in record.get("screens") or []]
+        wireframes = value(answers, "wireframe") or []
         mockups.append({"screen": ", ".join(names) or record.get("screen_label") or stem,
-                        "wireframe_files": len(value(answers, "wireframe") or []),
+                        "wireframe_files": sum(bool(s.get("path")) for s in wireframes),
+                        "wireframe_links": sum(bool(s.get("url")) for s in wireframes),
                         "source": source, "background": background.get("label"),
                         "background_note": (answers.get("background") or {}).get("note"), "options": record.get("options"),
                         "approved_concept": record.get("approved_concept")})

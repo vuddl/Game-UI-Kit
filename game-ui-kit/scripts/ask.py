@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import re
@@ -400,6 +401,28 @@ def clean_inputs(kit: Path) -> int:
     return removed
 
 
+def wireframe_source(source: dict) -> dict:
+    label = (source.get("screen") or "").strip()
+    screen = {"screen": slug(label) if label else "", "label": label, "note": (source.get("note") or "").strip()}
+    if "url" not in source:
+        screen["file"] = source.get("path")
+        return screen
+
+    link = source["url"].strip() if isinstance(source["url"], str) else ""
+    error = "Liên kết wireframe phải là URL hợp lệ bắt đầu bằng https:// hoặc http://."
+    if not re.match(r"^https?://[^/\\?#\s]+", link, re.IGNORECASE) or re.search(r"[\s\\\x00-\x1f\x7f]", link):
+        raise ValueError(error)
+    try:
+        url = urlparse(link)
+        if not url.hostname or url.username is not None or url.password is not None:
+            raise ValueError(error)
+        _ = url.port
+    except ValueError as exc:
+        raise ValueError(error) from exc
+    screen["url"] = link
+    return screen
+
+
 def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
     """Derive the fields the skill needs from the raw answers."""
     record = {"form": form_id, "submitted": datetime.now(timezone.utc).isoformat(timespec="seconds"), "answers": answers}
@@ -432,11 +455,10 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 5:
             raise ValueError("Chọn từ 1 đến 5 option demo cho mỗi màn.")
         record["options"] = count
-        # One screen per wireframe file. A blank name is for Codex to guess from the image.
-        record["screens"] = [{"screen": slug(f.get("screen")) if (f.get("screen") or "").strip() else "",
-                              "label": (f.get("screen") or "").strip(), "note": (f.get("note") or "").strip(),
-                              "file": f.get("path")}
-                             for f in (answers.get("wireframe") or {}).get("value") or []]
+        sources = (answers.get("wireframe") or {}).get("value") or []
+        if "wireframe" in answers and (not sources or any(not ("url" in s or s.get("path")) for s in sources)):
+            raise ValueError("Thêm ít nhất một tệp hoặc liên kết wireframe.")
+        record["screens"] = [wireframe_source(source) for source in sources]
         style = (answers.get("ui_style") or {}).get("value") or {}
         if style.get("choice") == "other" and (style.get("note") or "").strip():
             record["ui_style_description"] = style["note"].strip()
@@ -509,27 +531,40 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
 
 # ---------- uploads ----------
 
-def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes) -> list[dict]:
-    ext = Path(name).suffix.lower()
-    if ext not in ALLOWED:
+def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes, *,
+                 reference: bool = False, unpack: bool = False) -> list[dict]:
+    filename = Path(name.replace("\\", "/")).name or "file"
+    ext = Path(filename).suffix.lower()
+    if not reference and ext not in ALLOWED:
         raise ValueError(f"Chỉ nhận {', '.join(sorted(ALLOWED))}")
     parts = [slug(p) for p in where.split("/") if p.strip()] or ["files"]
     folder = kit / "inputs" / slug(form_id) / Path(*parts)
     digest = hashlib.sha256(data).hexdigest()[:10]
-    stem = slug(Path(name).stem)
+    stem = slug(Path(filename).stem)[:100]
     folder.mkdir(parents=True, exist_ok=True)
-    if ext != ".zip":
-        same = sorted(folder.glob(f"{digest}_*{ext}"))
-        target = same[0] if same else folder / f"{digest}_{stem}{ext}"
-        if not target.exists():
-            target.write_bytes(data)
-        return [{"path": target.relative_to(kit).as_posix(), "name": name}]
-    out = folder / f"{digest}_{stem}"
+    if ext == ".zip" and (not reference or (unpack and zipfile.is_zipfile(io.BytesIO(data)))):
+        files = unpack_artwork(folder / f"{digest}_{stem}", kit, data, artwork_only=reference)
+        if files:
+            return files
+        if not reference:
+            raise ValueError("File ZIP không có ảnh hoặc PSD nào.")
+
+    ext = "." + slug(ext[1:])[:40] if ext else ""
+    same = sorted(p for p in folder.glob(f"{digest}_*") if p.is_file() and p.suffix == ext)
+    target = same[0] if same else folder / f"{digest}_{stem}{ext}"
+    if not target.exists():
+        target.write_bytes(data)
+    return [{"path": target.relative_to(kit).as_posix(), "name": name}]
+
+
+def unpack_artwork(out: Path, kit: Path, data: bytes, *, artwork_only: bool) -> list[dict]:
     files = []
-    import io
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        members = [m for m in archive.infolist() if not m.is_dir() and Path(m.filename).suffix.lower() in FROM_ZIP
+        entries = [m for m in archive.infolist() if not m.is_dir()
                    and not Path(m.filename).name.startswith(".") and "__MACOSX" not in m.filename]
+        members = [m for m in entries if Path(m.filename).suffix.lower() in FROM_ZIP]
+        if artwork_only and len(members) != len(entries):
+            return []
         if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_UNZIPPED:
             raise ValueError("File ZIP quá lớn.")
         for member in members:
@@ -540,8 +575,6 @@ def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes) ->
             if not target.exists():
                 target.write_bytes(archive.read(member))
             files.append({"path": target.relative_to(kit).as_posix(), "name": member.filename})
-    if not files:
-        raise ValueError("File ZIP không có ảnh hoặc PSD nào.")
     return files
 
 
@@ -607,7 +640,8 @@ class Handler(BaseHTTPRequestHandler):
             elif url.path == "/upload":
                 query = parse_qs(url.query)
                 files = store_upload(self.server.kit, self.server.form["id"], (query.get("where") or ["files"])[0],
-                                     (query.get("name") or ["file"])[0], data)
+                                     (query.get("name") or ["file"])[0], data,
+                                     reference=query.get("kind") == ["reference"], unpack=query.get("unpack") == ["1"])
                 self.send_json(200, {"files": files})
             elif url.path == "/submit":
                 if self.server.done.is_set():
