@@ -13,7 +13,7 @@
       "default_from": "kit:wireframes",
       "file_fields": [
         {"id": "screen", "label": "Tên màn", "placeholder": "Chọn hoặc gõ tên màn (để trống: Codex tự đoán)", "suggestions_from": "kit:screens+catalog:screens"},
-        {"id": "note", "label": "Mô tả màn", "placeholder": "Màn này dùng để làm gì, cần có gì (không bắt buộc)", "multiline": true, "suggest_from": "screens"}
+        {"id": "note", "label": "Mô tả màn", "placeholder": "Màn này dùng để làm gì, cần có gì (không bắt buộc)", "multiline": true}
       ]
     },
     {
@@ -23,7 +23,7 @@
       "required": true,
       "options": [
         {"value": "yes", "label": "Có", "attach": true, "attach_assets": true, "attach_required": true, "describe": true,
-         "attach_hint": "Bộ UI kit: PNG, PSD hoặc ZIP"},
+         "describe_placeholder": "Ghi chú về bộ UI kit (không bắt buộc)", "attach_label": "Thêm bộ UI kit"},
         {"value": "no", "label": "Không"}
       ]
     },
@@ -35,8 +35,8 @@
       "show_if": {"question": "kit", "in": ["no"]},
       "options": [
         {"value": "reference", "label": "Có reference", "hint": "Các câu style bên dưới không bắt buộc; câu nào để trống thì lấy theo ảnh reference.",
-         "attach": true, "attach_assets": true, "attach_required": true, "describe": true, "attach_hint": "Không giới hạn số ảnh",
-         "suggest_from": "art_styles", "suggest_context": "ui_style"},
+         "attach": true, "attach_assets": true, "attach_required": true, "describe": true,
+         "describe_placeholder": "Ghi chú các chi tiết cần tham khảo (không bắt buộc)", "attach_label": "Thêm ảnh tham chiếu"},
         {"value": "describe", "label": "Không có reference, tự sáng tạo theo mô tả"}
       ]
     },
@@ -64,7 +64,7 @@
       "required_if": {"question": "start", "in": ["describe"]},
       "show_if": {"question": "start", "in": ["describe", "reference"]},
       "options_from": "catalog:art_styles",
-      "other": {"label": "Lựa chọn khác", "placeholder": "Tên style", "describe": true, "suggest_from": "art_styles",
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên style", "describe": true,
                 "describe_placeholder": "Mô tả style này: hình khối, viền, màu, chất liệu, font (không bắt buộc)"}
     },
     {

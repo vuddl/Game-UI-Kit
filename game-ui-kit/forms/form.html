@@ -39,6 +39,8 @@ input[type=text],input[type=number],input[type=url],textarea{width:100%;padding:
 textarea{min-height:64px;resize:vertical}
 input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .suggestions{max-height:230px;overflow:auto;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.suggestion-toggle{margin-top:4px;padding:2px 6px;border:0;background:transparent;color:var(--accent);font-size:13px}
+.suggestion-toggle:hover{text-decoration:underline}
 .suggestion{display:block;width:100%;padding:8px 11px;border:0;background:transparent;color:var(--text);text-align:left}
 .suggestion:hover,.suggestion[aria-selected=true]{background:var(--accent-soft)}
 .suggestion small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:var(--muted);white-space:normal}
@@ -177,36 +179,42 @@ const searchText = s => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").
 let suggestionLists = 0;
 
 function descriptionChoices(source, context, area){
+  if (!context) return [];
   const catalog = SPEC.description_suggestions?.[source] || [];
-  const key = context ? slug(context) : "";
+  const key = slug(context);
   const personal = SPEC.personal_suggestions?.[source]?.[key]?.[area || ""] || [];
-  const selected = key && catalog.find(item => slug(item.label) === key);
+  const selected = catalog.find(item => slug(item.label) === key);
   if (source === "screen_overviews") return selected ? [selected] : [];
-  if (source !== "screens"){
-    const ordered = selected ? [selected, ...catalog.filter(item => item !== selected)] : catalog;
-    return [...personal, ...ordered];
-  }
+  if (!selected) return personal;
+  if (source !== "screens") return [...personal, selected];
 
   const areas = area === "middle" ? ["middle", "left", "right"] : [area];
-  const screenChoices = (selected ? [selected] : catalog).flatMap(screen => {
-    const regions = area ? screen.regions.filter(region => region.areas.some(a => areas.includes(a))) : screen.regions;
-    const choices = regions.map(region => ({label: `${screen.label} · ${region.label}`, text: region.text,
-      hint: `${region.position} · ${region.text}`}));
-    if (selected && choices.length > 1){
-      choices.unshift({label: `${screen.label} · ${area ? "Toàn bộ vùng này" : "Tất cả vùng"}`,
-        hint: regions.map(region => region.label).join(" · "),
-        text: regions.map(region => `${region.label}: ${region.text}`).join("\n")});
-    }
-    return choices;
-  });
+  const regions = area ? selected.regions.filter(region => region.areas.some(a => areas.includes(a))) : selected.regions;
+  const screenChoices = regions.map(region => ({label: `${selected.label} · ${region.label}`, text: region.text,
+    hint: `${region.position} · ${region.text}`}));
+  if (screenChoices.length > 1){
+    screenChoices.unshift({label: `${selected.label} · ${area ? "Toàn bộ vùng này" : "Tất cả vùng"}`,
+      hint: regions.map(region => region.label).join(" · "),
+      text: regions.map(region => `${region.label}: ${region.text}`).join("\n")});
+  }
   return [...personal, ...screenChoices];
 }
 
 function descriptionInput(value, onChange, opts, getContext = () => ""){
   const input = textInput(value, onChange, opts);
-  if (!SPEC.description_suggestions?.[opts.suggest_from]?.length && !SPEC.personal_suggestions?.[opts.suggest_from]) return input;
+  if (!opts.suggest_from) return input;
+  const choice = VALUES[opts.suggest_context]?.value;
+  const context = choice ? (choice.choice === "other" ? choice.label : choice.choice) : getContext();
+  const choices = descriptionChoices(opts.suggest_from, context, opts.area);
+  if (!choices.length) return input;
   const list = el("div", {id: `suggestions_${++suggestionLists}`, class: "suggestions", role: "listbox",
     "aria-label": "Gợi ý mô tả", hidden: true});
+  const toggle = el("button", {class: "suggestion-toggle", type: "button", "aria-controls": list.id,
+    "aria-expanded": "false", onclick: () => {
+      if (!list.hidden){ setOpen(false); return; }
+      show("");
+      input.focus({preventScroll: true});
+    }}, "Gợi ý mô tả");
   input.setAttribute("aria-controls", list.id);
   input.setAttribute("aria-autocomplete", "list");
   input.setAttribute("aria-expanded", "false");
@@ -215,14 +223,13 @@ function descriptionInput(value, onChange, opts, getContext = () => ""){
   function setOpen(open){
     list.hidden = !open;
     input.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-expanded", String(open));
     input.removeAttribute("aria-activedescendant");
     active = -1;
   }
   function show(query){
-    const choice = VALUES[opts.suggest_context]?.value;
-    const context = choice ? (choice.choice === "other" ? choice.label : choice.choice) : getContext();
     const terms = searchText(query).trim().split(/\s+/).filter(Boolean);
-    const matches = descriptionChoices(opts.suggest_from, context, opts.area).filter(item => {
+    const matches = choices.filter(item => {
       const content = searchText(`${item.label} ${item.text} ${item.hint || ""}`);
       return terms.every(term => content.includes(term));
     });
@@ -237,9 +244,9 @@ function descriptionInput(value, onChange, opts, getContext = () => ""){
     setOpen(matches.length > 0);
   }
 
-  input.addEventListener("focus", () => show(""));
-  input.addEventListener("input", () => show(input.value));
-  input.addEventListener("blur", () => setOpen(false));
+  const field = el("div", {}, input, toggle, list);
+  input.addEventListener("input", () => { if (!list.hidden) show(input.value); });
+  field.addEventListener("focusout", e => { if (!field.contains(e.relatedTarget)) setOpen(false); });
   input.addEventListener("keydown", e => {
     if (e.isComposing) return;
     if (e.key === "Escape" && !list.hidden){
@@ -261,7 +268,7 @@ function descriptionInput(value, onChange, opts, getContext = () => ""){
       option.scrollIntoView({block: "nearest"});
     }
   });
-  return el("div", {}, input, list);
+  return field;
 }
 
 /* Fields under each uploaded file. */
@@ -462,14 +469,19 @@ function optionExtras(q, opt, entry, nameInput){
     box.append(fieldsWidget(x.fields, entry.fields, {id: where}, entry));
   }
   entry.files ||= [];
+  if (x.attach_assets && x.describe && entry.field_files?.note){
+    for (const file of entry.field_files.note){
+      if (!entry.files.some(existing => existing.path === file.path)) entry.files.push(file);
+    }
+    delete entry.field_files.note;
+  }
   if (x.describe){
     const note = descriptionInput(entry.note, v => { entry.note = v; }, {...x, multiline: true,
       placeholder: x.describe_placeholder || "Mô tả"}, () => entry.choice === "other" ? entry.label : entry.choice);
-    box.append(x.attach_assets
-      ? fieldAttachment(entry, "note", where, note, "mô tả", {description: true})
-      : filesWidget(entry.files, where, {target: note, description: true, unpack: x.attach, label: x.attach_label}));
+    box.append(filesWidget(entry.files, where, {target: note, description: true,
+      assets: x.attach_assets, unpack: x.attach && !x.attach_assets, label: x.attach_label}));
   }
-  if (x.attach && (x.attach_assets || !x.describe)){
+  if (x.attach && !x.describe){
     box.append(filesWidget(entry.files, where, {hint: x.attach_hint, label: x.attach_label,
       assets: x.attach_assets, unpack: !x.attach_assets}));
   }
@@ -621,10 +633,11 @@ function renderQuestion(q){
     body.append(config);
     card.addEventListener("focusout", e => { if (e.target.matches('input[type="text"]')) config.check(); });
   }
-  card.append(el("div", {class: "err", text: SPEC.id === "export" && q.id === "photoshop"
+  const errorMessage = SPEC.id === "export" && q.id === "photoshop"
     ? "Chọn bản Photoshop và hoàn tất kiểm tra cấu hình bên trên." : (q.allow_links
       ? "Thêm tệp hoặc liên kết wireframe hợp lệ bắt đầu bằng https:// hoặc http://."
-      : "Câu này cần trả lời.")}));
+      : "Câu này cần trả lời.");
+  card.append(el("div", {class: "err", "data-default-message": errorMessage, text: errorMessage}));
   return card;
 }
 
@@ -660,7 +673,9 @@ function problem(q){
       if (e.choice === "other" && blank(e.label)) return true;
       const option = e.choice === "other" ? q.other : q.options.find(o => o.value === e.choice);
       const opt = Object.assign({}, q.option_extras || {}, option);
-      if (opt.attach_required && !(e.files || []).length) return true;
+      if (opt.attach_required && !(e.files || []).length){
+        return opt.attach_label ? `${opt.attach_label} để tiếp tục.` : "Thêm ảnh hoặc tệp cho lựa chọn này.";
+      }
       if (opt.describe_required && blank(e.note)) return true;
       for (const f of (opt.fields || [])) if (f.required && blank((e.fields || {})[f.id])) return true;
     }
@@ -682,7 +697,10 @@ async function submit(){
   let first = null;
   for (const q of shown){
     const bad = problem(q);
-    document.getElementById("q_" + q.id).classList.toggle("invalid", bad);
+    const card = document.getElementById("q_" + q.id);
+    card.classList.toggle("invalid", Boolean(bad));
+    const error = card.querySelector(".err");
+    error.textContent = typeof bad === "string" ? bad : error.dataset.defaultMessage;
     if (bad && !first) first = q;
   }
   if (first){ document.getElementById("q_" + first.id).scrollIntoView({behavior: "smooth", block: "center"}); status("Còn câu chưa trả lời."); return; }

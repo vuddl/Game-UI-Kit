@@ -95,7 +95,7 @@ File đính kèm lưu ở `inputs/` trong kit. File trùng nội dung chỉ lưu
 
 Danh sách thể loại, art style và màn hình lấy từ sheet UI KIT FILTER, lưu ở `game-ui-kit/references/catalog.md`. Câu hỏi của từng form nằm ở `game-ui-kit/forms/*.json`, sửa file đó để đổi câu hỏi. Bộ base và quy tắc đặt tên (`btn_yellow`, `btn_sp_green`, `title_red`, `set_coin_1`, `loading_bar_yellow_a`...) ở `game-ui-kit/references/ui_kit_standard.md`.
 
-Các ô mô tả gameplay, art style và màn hình có danh sách gợi ý từ UI KIT FILTER. Chọn một gợi ý để điền rồi chỉnh sửa trực tiếp trong ô. Form đọc dữ liệu đã lưu trong `game-ui-kit/references/form_suggestions.json`.
+Nút **Gợi ý mô tả** xuất hiện ở ô gameplay, mô tả style và bố cục màn khi có mẫu phù hợp với lựa chọn hiện tại. Bấm nút để xem và chèn mẫu vào ô. Form đọc dữ liệu từ `game-ui-kit/references/form_suggestions.json`.
 
 Nhóm **Mẫu bạn đã dùng** đọc các brief Game UI Kit đã gửi trên máy để gợi ý theo thể loại game, art style hoặc màn và vùng tương ứng. Mẫu dùng trong nhiều bộ UI được ưu tiên. Chỉ mục lịch sử lưu đường dẫn tới các bộ UI trên máy, còn nội dung vẫn nằm trong brief của từng bộ.
 

@@ -49,7 +49,6 @@
         "label": "Lựa chọn khác",
         "placeholder": "Tên thể loại",
         "describe": true,
-        "suggest_from": "game_types",
         "describe_placeholder": "Mô tả thể loại này: chơi thế nào, mục tiêu, cảm giác (không bắt buộc)"
       }
     },
