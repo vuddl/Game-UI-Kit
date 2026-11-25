@@ -11,7 +11,7 @@
       "required": true,
       "options_from": "kit:screens+catalog:screens",
       "option_extras": {"describe": true, "attach": true, "suggest_from": "screens"},
-      "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn", "repeat": true}
+      "other": {"label": "Lựa chọn khác", "placeholder": "Tên màn", "repeat": true, "suggest_from": null}
     },
     {
       "id": "prototype",

@@ -45,6 +45,16 @@ DRIVER = r"""
       check(sendBtn.disabled, 'Submit must wait for the image upload');
     };
     const general = document.querySelector('#q_function textarea');
+    const suggestions = document.querySelector('#q_function .suggestions');
+    general.focus();
+    check(suggestions?.hidden, 'Suggestions opened when the description received focus');
+    document.querySelector('#q_function .suggestion-toggle').click();
+    check(!suggestions.hidden && suggestions.children.length === 1, 'Missing the selected screen overview');
+    suggestions.firstElementChild.click();
+    check(suggestions.hidden && general.value === VALUES.function.value && general.value.length > 0,
+      'Selecting a suggestion did not fill and close the description');
+    general.value = '';
+    general.dispatchEvent(new Event('input'));
     check(problem(SPEC.questions.find(q => q.id === 'function')), 'Empty required description was accepted');
     const text = new DataTransfer();
     text.setData('text/plain', 'Keep normal text paste');
@@ -205,6 +215,7 @@ FIELD_DRIVER = r"""
       paste(name, 'name.pdf');
       await waitFor(() => !UPLOADS);
       const note = document.querySelector('#q_game_type .extra > .description-box textarea');
+      check(!note.closest('.description-box').querySelector('.suggestion-toggle'), 'Custom genre shows catalog descriptions');
       drop(note, 'rules.docx');
       await waitFor(() => !UPLOADS);
       const picker = document.querySelector('#q_gameplay input[type=file]');
@@ -219,6 +230,30 @@ FIELD_DRIVER = r"""
       check(document.querySelector('#q_game_type .extra > .description-box .description-attachment button')?.title === 'rules.docx',
         'Custom description attachment was lost');
     } else {
+      const reference = document.querySelector('#q_start .description-box textarea');
+      const start = SPEC.questions.find(q => q.id === 'start');
+      const startCard = document.querySelector('#q_start');
+      reference.focus();
+      check(!reference.closest('.description-box').querySelector('.suggestion-toggle'), 'Reference note shows style suggestions');
+      check(startCard.querySelectorAll('input[type=file]').length === 1, 'Reference has two attachment areas');
+      check(!problem(start), 'Previously saved reference image did not satisfy the requirement');
+      startCard.querySelector('.description-attachment .x').click();
+      reference.value = 'Use the button and font treatments.';
+      reference.dispatchEvent(new Event('input'));
+      check(problem(start), 'A reference description without an attachment was accepted');
+      paste(reference, 'style-reference.png');
+      await waitFor(() => !UPLOADS);
+      check(!problem(start), 'An image pasted into the reference description was rejected');
+      const styleNote = document.querySelector('#q_style_note');
+      check(!styleNote.querySelector('.suggestion-toggle'), 'Style suggestions appeared without a style');
+      document.querySelector('#q_ui_style input[type=radio]').click();
+      const style = VALUES.ui_style.value;
+      const styleSuggestions = document.querySelector('#q_style_note .suggestions');
+      check(styleSuggestions?.hidden, 'Style suggestions should start closed');
+      document.querySelector('#q_style_note .suggestion-toggle').click();
+      check(!styleSuggestions.hidden && styleSuggestions.children.length === 1
+        && styleSuggestions.querySelector('strong').textContent === style.label,
+        'Style suggestions must match the selected style');
       const wireframe = document.querySelector('#q_wireframe');
       check(wireframe.querySelector('input[type=file][accept]')?.accept.includes('.psd'), 'Artwork picker lost format restriction');
       const count = VALUES.wireframe.value.length;
@@ -374,7 +409,7 @@ class ClipboardAttachmentTests(unittest.TestCase):
                 kit = Path(folder)
                 source = ask.store_upload(kit, 'mockup', 'wireframe', 'screen.png', b'example')[0]
                 prefill = {'wireframe': {'value': [source] if with_upload else []}, 'kit': {'value': {'choice': 'no'}},
-                           'start': {'value': {'choice': 'reference', 'files': [source]}},
+                           'start': {'value': {'choice': 'reference', 'field_files': {'note': [source]}}},
                            'background': {'value': {'choice': 'generate'}}}
                 form = ask.load_form('mockup', kit)
                 saved = self.submit_in_browser(kit, form, prefill, kit / 'briefs/mockup/test.json', FIELD_DRIVER)
@@ -392,9 +427,11 @@ class ClipboardAttachmentTests(unittest.TestCase):
                     self.assertEqual(fields['screen'][0]['name'], 'screen.pdf')
                     self.assertEqual(fields['note'][0]['name'], 'layout.txt')
                 self.assertEqual(answers['background']['field_files']['note'][0]['name'], 'background.pdf')
+                self.assertEqual([f['name'] for f in answers['start']['value']['files']], ['style-reference.png'])
+                self.assertEqual(answers['start']['value']['note'], 'Use the button and font treatments.')
                 self.assertEqual(answers['options']['files'][0]['name'], 'options.txt')
                 self.assertEqual(saved['options'], 1)
-                self.assertEqual(ask.clean_inputs(kit), 1)
+                self.assertEqual(ask.clean_inputs(kit), 1 if with_upload else 2)
                 self.assertTrue(all((kit / ref['path']).is_file() for ref in refs))
 
     def test_artwork_upload_retains_zip_import_and_type_validation(self):
