@@ -1,5 +1,7 @@
 # Mockup layout format
 
+For playable prototypes, screenshots are function references and do not force `keep`. Improve layout during mockup unless the user requested prior wireframe review. Approved wireframes/demos lock their approved composition. Reuse approved components as actual sprite layers per [exact reuse](reuse.md); do not redraw them through successive image generations.
+
 One file per screen at `ui_art/<kit>/mockups/<screen>.json`, or `<screen>__v1.json`, `<screen>__v2.json` for variants. Items draw in list order, so later items sit on top.
 
 ```json

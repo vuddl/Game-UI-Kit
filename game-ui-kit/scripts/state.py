@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ask import clean_inputs  # noqa: E402
+import workflow
 
 COMMANDS = ("setup", "wireframe", "mockup", "export")
 HIDDEN = ".gui"
@@ -54,6 +55,7 @@ def save(kit: Path, data: dict) -> None:
     path = state_path(kit)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    workflow.checkpoint(kit)
 
 
 def snapshot(kit: Path) -> dict[str, list]:
@@ -139,6 +141,13 @@ def cmd_step(kit: Path, text: str) -> int:
 
 
 def cmd_done(kit: Path) -> int:
+    if workflow.pending_question(kit):
+        print(json.dumps({"status": "WAITING_QUESTION", "message": "Người dùng chưa gửi câu trả lời; không kết thúc bước này."}, ensure_ascii=False))
+        return 4
+    form = read_json(kit / ".gui/ask.json") or {}
+    if form and not form.get("finished"):
+        print(json.dumps({"status": "WAITING_FORM", "url": form.get("url")}, ensure_ascii=False))
+        return 4
     data = load(kit)
     current = data.get("current")
     if not current:
@@ -233,6 +242,11 @@ def cmd_summary(kit: Path) -> int:
     data = load(kit)
     setup = read_json(kit / "briefs" / "setup.json")
     summary = {"kit": kit.resolve().name, "path": str(kit)}
+    summary["project_workflow"] = workflow.configuration(kit)
+    summary["pending_question"] = workflow.pending_question(kit)
+    summary["handoff"] = ".gui/handoff.json" if (kit / ".gui/handoff.json").exists() else None
+    summary["project_screens"] = workflow.project_screens(kit)
+    summary["sync"] = workflow.queue(kit)
     if setup:
         summary["setup"] = {"size": setup.get("size"), "orientation": setup.get("orientation"),
                             "game_type": setup.get("game_type"),
@@ -289,6 +303,7 @@ def cmd_summary(kit: Path) -> int:
         "style_anchor": demos.get("style_anchor"),
         "demos": demos.get("screens") or [],
         "sprite_production": demos.get("sprite_production") or {"requested": False},
+        "internal_sprites": demos.get("internal_sprites") or {"enabled": bool(demos.get("style_anchor"))},
         "full": [{"screen": e.get("label"), "note": e.get("note"), "files": len(e.get("files") or [])}
                  for e in (full or {}).get("screens", [])],
         "images": [p for p in list_images(kit, "preview/mockups") if "_variants" not in p and "_vs_reference" not in p],

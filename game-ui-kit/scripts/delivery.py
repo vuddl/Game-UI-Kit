@@ -18,6 +18,7 @@ from PIL import Image
 import background
 import uikit
 import sprite_quality
+import workflow
 
 FORMATS = {'ui_kit', 'components_psd', 'screen_psd', 'unity', 'zip'}
 
@@ -291,6 +292,12 @@ def build(kit: Path, force: bool = False) -> dict:
             shutil.rmtree(destination)
         os.replace(stage, destination)
         write(export / 'delivery_report.json', report)
+        if 'ui_kit' in selected:
+            try:
+                report['project_demo_sync'] = workflow.archive_exported(kit, report['files'])
+            except (OSError, ValueError) as error:
+                report['project_demo_sync'] = {'status': 'pending', 'error': str(error)}
+            write(export / 'delivery_report.json', report)
         return report
     finally:
         if stage.exists() and stage.resolve().parent == export and stage.name.startswith('.delivery-stage-'):

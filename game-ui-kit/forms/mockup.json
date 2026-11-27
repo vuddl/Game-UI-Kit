@@ -1,13 +1,13 @@
 {
   "id": "mockup",
   "title": "Tạo UI visual mockup",
-  "intro": "Làm và duyệt demo các màn trước. Chỉ tạo UI kit sprite khi bạn yêu cầu riêng sau đó.",
+  "intro": "Làm và duyệt demo từng màn. Kế thừa style đã chốt và ghép nguyên sprite chuẩn cho các component dùng lại. Xuất file bàn giao khi bạn yêu cầu Export.",
   "questions": [
     {
       "id": "wireframe",
       "type": "files",
       "title": "Add wireframe",
-      "hint": "Tải ảnh wireframe hoặc thêm liên kết chia sẻ như Figma. Ảnh từ $wireframe được điền sẵn.",
+      "hint": "Tải ảnh, ZIP/RAR, kéo folder hoặc thêm link wireframe. Ảnh đã có được điền sẵn. Với prototype, screenshot xác định chức năng; bố cục có thể chỉnh khi làm demo.",
       "required": true,
       "allow_links": true,
       "default_from": "kit:wireframes",
@@ -15,6 +15,17 @@
         {"id": "screen", "label": "Tên màn", "placeholder": "Chọn hoặc gõ tên màn (để trống: Codex tự đoán)", "suggestions_from": "kit:screens+catalog:screens"},
         {"id": "note", "label": "Mô tả màn", "placeholder": "Màn này dùng để làm gì, cần có gì (không bắt buộc)", "multiline": true}
       ]
+    },
+    {
+      "id": "prototype_screens",
+      "type": "multi",
+      "title": "Chọn màn thực tế của prototype để làm demo",
+      "hint": "Danh sách được lấy từ project đã khảo sát. Chọn một hoặc nhiều màn; có thể ghi chú, thêm ảnh hoặc thêm màn còn thiếu.",
+      "show_if": {"context": "input_mode", "in": ["prototype"]},
+      "required": true,
+      "options_from": "kit:screens+catalog:screens",
+      "option_extras": {"describe": true, "attach": true},
+      "other": {"label": "Màn khác", "placeholder": "Tên màn", "repeat": true}
     },
     {
       "id": "kit",

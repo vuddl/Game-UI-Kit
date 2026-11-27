@@ -27,7 +27,7 @@ DRIVER = r"""
   try {
     while (!document.querySelector('#q_screens')) await new Promise(r => setTimeout(r, 20));
     for (const name of ['Home', 'Shop']) {
-      const label = [...document.querySelectorAll('#q_screens .opt > label')].find(e => e.textContent === name);
+      const label = [...document.querySelectorAll('#q_screens .opt > label')].find(e => e.querySelector('div > div')?.textContent === name);
       check(label, 'Catalog screen missing');
       label.querySelector('input').click();
     }

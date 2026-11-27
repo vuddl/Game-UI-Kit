@@ -15,7 +15,7 @@ py -3 -c "import urllib.request as u;exec(u.urlopen('https://raw.githubuserconte
 Script cần Python 3 kèm Pillow và numpy:
 
 ```powershell
-py -3 -m pip install pillow numpy
+py -3 -m pip install pillow numpy rarfile
 ```
 
 Sau đó mở một phiên Codex mới. Gõ `$setup` để bắt đầu thiết kế, hoặc `$export` nếu đã có ảnh mockup UI. Xuất PSD sửa được cần cài Photoshop trên máy. Bảng chọn bấm được giữa các bước cần app Codex Desktop; nơi khác thì Codex hỏi bằng lựa chọn đánh số.
@@ -32,6 +32,10 @@ Sau đó mở một phiên Codex mới. Gõ `$setup` để bắt đầu thiết 
 | `$info` | Thông báo những gì đã lưu: setup (kích thước, hướng màn, thể loại, gameplay), câu trả lời từng màn của wireframe và mockup, ảnh kết quả, file export, và lệnh đang làm tới bước nào. Không thay đổi gì |
 
 Codex trả lời bằng tiếng Việt. Nội dung hiển thị trên wireframe, concept, mockup và prototype dùng tiếng Anh.
+
+Với prototype chơi được, form Setup bổ sung nguồn project, một link Figma xuyên suốt và hai folder riêng: demo chốt trong phiên, và demo chốt được xuất khi xuất file. Codex khảo sát/chụp UI, dùng danh sách màn thực tế trong form và có thể cải thiện bố cục ngay khi làm mockup. Các component đã chốt được ghép nguyên từ sprite gốc, tránh suy giảm qua nhiều lần gen. Khi chốt/Export, ảnh được lưu vào folder tương ứng và xếp trong section riêng trên cùng Figma; chat mới tiếp tục từ tiến độ đã lưu.
+
+Các vùng nhận artwork hỗ trợ ZIP, RAR và kéo/chọn nguyên folder gồm thư mục con. Đọc RAR cần `rarfile` và công cụ giải nén hỗ trợ như 7-Zip hoặc bsdtar (`tar.exe` có sẵn trên Windows); gói có mật khẩu có thể giải nén trên máy rồi kéo folder vào. Question và form chờ đúng lúc bạn gửi câu trả lời/Hoàn thành; nháp form được lưu để tiếp tục.
 
 Quy tắc chuyển lệnh (`$info` chỉ xem, không tính là chuyển lệnh):
 

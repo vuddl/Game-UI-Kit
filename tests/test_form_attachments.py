@@ -235,7 +235,8 @@ FIELD_DRIVER = r"""
       const startCard = document.querySelector('#q_start');
       reference.focus();
       check(!reference.closest('.description-box').querySelector('.suggestion-toggle'), 'Reference note shows style suggestions');
-      check(startCard.querySelectorAll('input[type=file]').length === 1, 'Reference has two attachment areas');
+      check(startCard.querySelectorAll('input[type=file]:not([webkitdirectory])').length === 1, 'Reference has two attachment areas');
+      check(startCard.querySelectorAll('input[webkitdirectory]').length === 1, 'Folder picker missing');
       check(!problem(start), 'Previously saved reference image did not satisfy the requirement');
       startCard.querySelector('.description-attachment .x').click();
       reference.value = 'Use the button and font treatments.';

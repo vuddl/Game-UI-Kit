@@ -18,7 +18,7 @@ A screen with only text labels where an icon would do is unfinished. In settings
 
 ## Prompt template for a screen concept
 
-Use this for the initial demo and each later screen concept. Use the approved anchor as a style reference when available.
+Use this for the initial demo and missing artwork in later concepts. An approved anchor defines style; a prototype screenshot defines functions, not a locked composition. An explicitly approved wireframe defines layout. Once masters exist, do not generate full-screen replacements of unchanged art: compose their exact pixels following [sprite reuse](reuse.md). Only missing or explicitly changed artwork goes through generation.
 
 ```text
 Use case: stylized-concept
