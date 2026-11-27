@@ -4,6 +4,48 @@
   "intro": "Thông tin chung của game. Các lệnh $wireframe và $mockup đều dùng theo setup này.",
   "questions": [
     {
+      "id": "input_mode",
+      "type": "single",
+      "title": "Bạn bắt đầu từ đâu?",
+      "required": true,
+      "default": "idea",
+      "options": [
+        {"value": "idea", "label": "Từ ý tưởng"},
+        {"value": "wireframe", "label": "Đã có wireframe"},
+        {"value": "prototype", "label": "Đã có prototype chơi được", "hint": "Khảo sát game, chụp case UI và dùng danh sách màn thực tế. Có thể chỉnh bố cục ngay khi làm mockup."}
+      ]
+    },
+    {
+      "id": "project_path", "type": "text", "plain_text": true, "title": "Đường dẫn project prototype",
+      "hint": "Ví dụ E:\\Projects\\MyGame. Dùng để khảo sát game và nhận diện cùng dự án khi chuyển chat; không phải folder nhận ảnh demo.",
+      "show_if": {"question": "input_mode", "in": ["prototype"]}, "required": true
+    },
+    {
+      "id": "figma_url", "type": "text", "plain_text": true, "title": "Link Figma duy nhất của dự án",
+      "hint": "Dán link file Figma có quyền chỉnh sửa. Screenshot, luồng UI, demo chốt trong phiên và demo bản cuối sau Export đều được xếp vào các section riêng trên cùng file này. Không cần nhập lại ở từng bước.",
+      "placeholder": "https://www.figma.com/design/…",
+      "required_if": {"question": "input_mode", "in": ["prototype"]}
+    },
+    {
+      "id": "approved_demo_folder", "type": "text", "plain_text": true, "title": "Folder lưu demo chốt trong phiên",
+      "hint": "Ví dụ D:\\MyGame\\demo_chot_trong_phien. Khi bạn nói chốt demo, Codex tự lưu chính xác ảnh vừa duyệt vào đây và cập nhật section demo chốt trên Figma. Folder này khác folder demo sau Export.",
+      "required_if": {"question": "input_mode", "in": ["prototype"]}
+    },
+    {
+      "id": "exported_demo_folder", "type": "text", "plain_text": true, "title": "Folder chứa demo chốt được xuất khi xuất file",
+      "hint": "Ví dụ D:\\MyGame\\demo_ban_cuoi_export. Chứa ảnh demo bản cuối được xuất ở bước Export. Codex lấy ảnh tại đây, gồm thư mục con, để cập nhật section demo bản cuối trên cùng Figma; không dùng nhầm với folder chốt trong phiên.",
+      "required_if": {"question": "input_mode", "in": ["prototype"]}
+    },
+    {
+      "id": "layout_workflow", "type": "single", "title": "Xử lý bố cục theo cách nào?",
+      "hint": "Screenshot prototype là tham chiếu chức năng. Không bắt buộc làm wireframe riêng; yêu cầu đã nêu trong chat sẽ được điền trước.",
+      "show_if": {"question": "input_mode", "in": ["prototype"]}, "default": "during_mockup",
+      "options": [
+        {"value": "during_mockup", "label": "Chỉnh bố cục khi làm mockup"},
+        {"value": "before_mockup", "label": "Duyệt luồng / wireframe trước"}
+      ]
+    },
+    {
       "id": "orientation",
       "type": "single",
       "title": "Màn ngang hay dọc?",

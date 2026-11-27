@@ -9,7 +9,7 @@ turn ending, and keeps the answer until --wait collects it.
 
 <form> is a file in the skill's forms/ folder: setup, wireframe, full, mockup, revise or export.
 The revise form offers the images in preview/<--kind>/ of the --screens given.
-For --kind concepts, pass one draft image stem in --screens to revise that concept.
+For --kind concepts, pass one or more draft image stems in --screens to revise those concepts.
 Prints a JSON line with the answers when the user submits. Attached files go to <kit>/inputs/.
 Nothing else is written: no copy of the form, no logs. Files in inputs/ that no answer file
 under <kit>/briefs/ refers to any more are deleted after every form.
@@ -30,6 +30,9 @@ import time
 import unicodedata
 import webbrowser
 import zipfile
+import workflow
+import archives
+import urllib.request
 from collections import defaultdict
 from contextlib import closing
 from datetime import datetime, timezone
@@ -44,7 +47,7 @@ FORMS = SKILL / "forms"
 CATALOG = SKILL / "references" / "catalog.md"
 FORM_SUGGESTIONS = SKILL / "references" / "form_suggestions.json"
 FORM_HISTORY = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "game-ui-kit" / "form-history.sqlite3"
-ALLOWED = {".png", ".jpg", ".jpeg", ".webp", ".psd", ".zip"}
+ALLOWED = {".png", ".jpg", ".jpeg", ".webp", ".psd", ".zip", ".rar"}
 FROM_ZIP = {".png", ".jpg", ".jpeg", ".webp", ".psd"}
 MAX_FILE = 300 * 1024 * 1024
 MAX_UNZIPPED = 1024 * 1024 * 1024
@@ -140,7 +143,7 @@ def kit_previews(kit: Path, kind: str, screens: list[str]) -> list[dict]:
     """The rendered versions of the given screens, for the revise form, each with its image."""
     if kind == "concepts":
         folder = kit / "style" / "concepts"
-        return [{"value": image.stem, "label": "Demo đang chỉnh", "image": image.relative_to(kit).as_posix()}
+        return [{"value": image.stem, "label": ("Demo đang chỉnh" if len(screens) == 1 else screen_label(kit, image.stem.split("__concept_", 1)[0])), "image": image.relative_to(kit).as_posix()}
                 for image in folder.glob("*.png") if image.stem in screens and image.is_file()]
     folder = kit / "preview" / kind
     options = []
@@ -170,6 +173,9 @@ PREVIEW = {"kind": "mockups", "screens": []}  # set from --kind and --screens, f
 
 
 def options_for(source: str, kit: Path) -> list[dict]:
+    actual = workflow.project_screens(kit)
+    if actual and any(part in ("kit:screens", "catalog:screens") for part in source.split("+")):
+        return actual
     options, seen = [], set()
     for part in source.split("+"):
         if part == "catalog:game_types":
@@ -203,7 +209,10 @@ def setup_size(kit: Path):
 
 def build_context(kit: Path) -> dict:
     size, orientation = setup_size(kit)
-    context = {"kit": kit.resolve().name, "has_layouts": bool(kit_layouts(kit))}
+    context = {"kit": kit.resolve().name, "kit_path": str(kit.resolve()), "has_layouts": bool(kit_layouts(kit))}
+    config = workflow.configuration(kit)
+    context["input_mode"] = config.get("input_mode", "idea")
+    context["has_project_screens"] = bool(workflow.project_screens(kit))
     context["command"] = (read_json(kit / ".gui" / "state.json") or {}).get("current")
     if orientation:
         context["orientation"] = orientation
@@ -215,8 +224,22 @@ def defaults_for(source: str, kit: Path):
     if source == "kit:wireframes":
         folder = kit / "preview" / "wireframes"
         files = sorted(folder.glob("*.png")) if folder.exists() else []
-        return [{"path": p.relative_to(kit).as_posix(), "name": p.name, "screen": screen_label(kit, screen_of(p.stem)),
-                 "note": ""} for p in files]
+        if files:
+            return [{"path": p.relative_to(kit).as_posix(), "name": p.name, "screen": screen_label(kit, screen_of(p.stem)),
+                     "note": ""} for p in files]
+        if workflow.configuration(kit).get("input_mode") == "prototype":
+            catalog = read_json(kit / "briefs/project_screens.json", {}) or {}
+            rows = catalog if isinstance(catalog, list) else catalog.get("screens", [])
+            sources = []
+            for row in rows:
+                for case in row.get("cases", []):
+                    relative = case.get("path") or case.get("image")
+                    if relative and (kit / relative).is_file():
+                        sources.append({"path": relative, "name": Path(relative).name,
+                                        "screen": row.get("label") or row.get("name") or row.get("screen"),
+                                        "note": "Screenshot prototype — tham chiếu chức năng"})
+            return sources
+        return []
     raise SystemExit(f"Unknown default_from: {source}")
 
 
@@ -234,7 +257,11 @@ def load_form(name: str, kit: Path) -> dict:
             form["intro"] = "Các màn dùng kích thước và hướng màn từ $setup. Có thể làm nhiều màn ngay từ đầu."
         else:
             form["title"] = "Làm tiếp demo các màn"
-            form["intro"] = "Các demo dùng style đã chốt ở màn đầu, hướng dẫn background và số option đã chọn. Chưa tạo UI kit sprite ở bước này."
+            form["intro"] = "Các demo kế thừa style, sprite chuẩn, hướng dẫn background và số option đã chọn. Chọn màn thực tế của dự án khi đã có danh mục. Chưa xuất file bàn giao ở bước này."
+    if name == "mockup" and build_context(kit)["input_mode"] == "prototype":
+        source = next(q for q in form["questions"] if q["id"] == "wireframe")
+        source.update(title="Nguồn màn từ prototype / wireframe", required=False,
+                      hint="Các màn đã khảo sát được điền sẵn. Screenshot là tham chiếu chức năng; có thể chỉnh bố cục khi làm demo, không bắt buộc wireframe riêng.")
     for question in form["questions"]:
         if "options_from" in question:
             source = question.pop("options_from")
@@ -252,9 +279,9 @@ def load_form(name: str, kit: Path) -> dict:
                 field["suggestions"] = [o["label"] for o in options_for(field.pop("suggestions_from"), kit)]
     if name == "revise" and PREVIEW["kind"] == "concepts":
         versions = next(q for q in form["questions"] if q["id"] == "versions")
-        versions.update(title="Bạn muốn chỉnh gì ở concept này?", hint="Ghi rõ phần cần đổi. Có thể đính kèm ảnh minh họa.")
-        form.update(title="Sửa demo", intro="Bấm Hoàn thành để sửa demo và xem lại trước khi chốt. Chưa tạo UI kit sprite.",
-                    questions=[versions])
+        versions.update(title="Bạn muốn chỉnh gì ở demo?", hint="Ghi rõ phần cần đổi cho từng màn. Có thể đính kèm ảnh minh họa.")
+        form.update(title="Sửa demo", intro="Bấm Hoàn thành để sửa phần được yêu cầu; các component đã chốt được ghép nguyên từ sprite chuẩn. Chưa xuất file bàn giao.",
+                    questions=[versions] if len(PREVIEW["screens"]) == 1 else form["questions"])
     if name == "export" and not kit_layouts(kit):
         source = next(q for q in form["questions"] if q["id"] == "source")
         source["options"] = [o for o in source["options"] if o["value"] != "existing"]
@@ -344,7 +371,7 @@ def personal_suggestions(form: str, kit: Path, catalog: dict) -> dict:
             briefs = [read_json(path) or {} for folder in ("wireframe", "mockup")
                       for path in (previous / "briefs" / folder).glob("*.json")]
         for brief in briefs:
-            if not brief.get("submitted"):
+            if not isinstance(brief, dict) or not brief.get("submitted"):
                 continue
             for source, context, area, value in brief_descriptions(brief):
                 if not isinstance(value, str):
@@ -387,6 +414,8 @@ def clean_inputs(kit: Path) -> int:
         return 0
     used: set[str] = set()
     for path in answer_paths(kit):
+        referenced_files(read_json(path, {}), used)
+    for path in (kit / ".gui/drafts").glob("*.json"):
         referenced_files(read_json(path, {}), used)
     removed = 0
     for path in sorted(inputs.rglob("*"), key=lambda p: len(p.parts), reverse=True):
@@ -444,6 +473,30 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         if game.get("choice") == "other" and (game.get("note") or "").strip():
             record["game_type_description"] = game["note"].strip()
         record["gameplay"] = (answers.get("gameplay") or {}).get("value")
+        mode = ((answers.get("input_mode") or {}).get("value") or {}).get("choice", "idea")
+        config = {"input_mode": mode}
+        for key in ("project_path", "figma_url", "approved_demo_folder", "exported_demo_folder"):
+            raw = ((answers.get(key) or {}).get("value") or "").strip().strip('"')
+            if raw:
+                if key != "figma_url":
+                    if not Path(raw).is_absolute():
+                        raise ValueError("Dán đường dẫn đầy đủ trên máy cho project/folder, ví dụ D:\\MyGame\\demo; không dùng đường dẫn tương đối hoặc link web.")
+                    raw = str(Path(raw).resolve())
+                config[key] = raw
+        if config.get("figma_url"):
+            workflow.figma_key(config["figma_url"])
+        if mode == "prototype":
+            missing = [key for key in ("project_path", "figma_url", "approved_demo_folder", "exported_demo_folder") if not config.get(key)]
+            if missing:
+                raise ValueError("Điền project, một link Figma và hai folder có vai trò riêng trước khi tiếp tục.")
+            if not Path(config["project_path"]).is_dir():
+                raise ValueError("Đường dẫn project chưa tồn tại hoặc không truy cập được.")
+        if config.get("approved_demo_folder") and config.get("exported_demo_folder"):
+            first, second = Path(config["approved_demo_folder"]), Path(config["exported_demo_folder"])
+            if first == second or first.is_relative_to(second) or second.is_relative_to(first):
+                raise ValueError("Hai folder cần tách riêng, không trùng hoặc lồng nhau: demo chốt trong phiên và demo được xuất khi Export.")
+        config["layout_workflow"] = ((answers.get("layout_workflow") or {}).get("value") or {}).get("choice", "during_mockup")
+        record["project_workflow"] = config
     if form_id == "wireframe":
         screen = (answers.get("screen") or {}).get("value") or {}
         record["screen"] = screen.get("choice") if screen.get("choice") != "other" else slug(screen.get("label"))
@@ -456,9 +509,28 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
             raise ValueError("Chọn từ 1 đến 5 option demo cho mỗi màn.")
         record["options"] = count
         sources = (answers.get("wireframe") or {}).get("value") or []
-        if "wireframe" in answers and (not sources or any(not ("url" in s or s.get("path")) for s in sources)):
+        prototype = workflow.configuration(kit).get("input_mode") == "prototype"
+        if "wireframe" in answers and ((not sources and not prototype) or any(not ("url" in s or s.get("path")) for s in sources)):
             raise ValueError("Thêm ít nhất một tệp hoặc liên kết wireframe.")
         record["screens"] = [wireframe_source(source) for source in sources]
+        if prototype:
+            selections = (answers.get("prototype_screens") or {}).get("value") or []
+            if not selections:
+                raise ValueError("Chọn màn thực tế của prototype để làm trong lượt này.")
+            known = {s["value"] for s in workflow.project_screens(kit)}
+            screens = []
+            for selection in selections:
+                key = selection["choice"]
+                if key == "other":
+                    key = slug(selection.get("label", ""))
+                elif key not in known:
+                    raise ValueError("Màn đã chọn không có trong danh mục dự án.")
+                screens.append({"screen": key, "label": selection.get("label") or key,
+                                "note": selection.get("note", ""), "files": selection.get("files", []),
+                                "reference_role": "function",
+                                "function_references": [s for s in record["screens"]
+                                    if s.get("screen") == key or s.get("label") == selection.get("label")]})
+            record["screens"] = screens
         style = (answers.get("ui_style") or {}).get("value") or {}
         if style.get("choice") == "other" and (style.get("note") or "").strip():
             record["ui_style_description"] = style["note"].strip()
@@ -467,8 +539,9 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
         versions = [{"layout": e["choice"], "label": e.get("label"), "change": (e.get("note") or "").strip(),
                      "files": e.get("files", [])} for e in (answers.get("versions") or {}).get("value") or []]
         if record["kind"] == "concepts":
-            if len(versions) != 1 or versions[0]["layout"] not in PREVIEW["screens"] or not versions[0]["change"]:
-                raise ValueError("Ghi rõ phần cần sửa ở concept đang xem.")
+            common = ((answers.get("common") or {}).get("value") or "").strip()
+            if not versions or any(v["layout"] not in PREVIEW["screens"] or not (v["change"] or common) for v in versions):
+                raise ValueError("Ghi rõ phần cần sửa ở từng demo đang chọn.")
         record["versions"] = versions
     if form_id == "wireframe":
         record["prototype"] = ((answers.get("prototype") or {}).get("value") or {}).get("choice") == "yes"
@@ -533,24 +606,32 @@ def apply_answers(form_id: str, kit: Path, answers: dict) -> dict:
 
 def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes, *,
                  reference: bool = False, unpack: bool = False) -> list[dict]:
-    filename = Path(name.replace("\\", "/")).name or "file"
+    original = archives.safe_name(name)
+    filename = original.name or "file"
     ext = Path(filename).suffix.lower()
     if not reference and ext not in ALLOWED:
         raise ValueError(f"Chỉ nhận {', '.join(sorted(ALLOWED))}")
     parts = [slug(p) for p in where.split("/") if p.strip()] or ["files"]
     folder = kit / "inputs" / slug(form_id) / Path(*parts)
+    if len(original.parts) > 1:
+        folder = folder.joinpath(*(slug(p) for p in original.parts[:-1]))
     digest = hashlib.sha256(data).hexdigest()[:10]
     stem = slug(Path(filename).stem)[:100]
     folder.mkdir(parents=True, exist_ok=True)
-    if ext == ".zip" and (not reference or (unpack and zipfile.is_zipfile(io.BytesIO(data)))):
-        files = unpack_artwork(folder / f"{digest}_{stem}", kit, data, artwork_only=reference)
+    if ext in (".zip", ".rar") and (not reference or unpack):
+        try:
+            files = archives.unpack(folder / f"{digest}_{stem}", kit, data, kind=ext[1:], artwork_only=reference and ext == ".zip")
+        except zipfile.BadZipFile:
+            if not reference:
+                raise
+            files = []
         if files:
             return files
         if not reference:
-            raise ValueError("File ZIP không có ảnh hoặc PSD nào.")
+            raise ValueError("Gói nén không có ảnh hoặc PSD được hỗ trợ.")
 
     ext = "." + slug(ext[1:])[:40] if ext else ""
-    same = sorted(p for p in folder.glob(f"{digest}_*") if p.is_file() and p.suffix == ext)
+    same = sorted(p for p in folder.glob(f"{digest}_*") if p.is_file() and p.suffix == ext) if len(original.parts) == 1 else []
     target = same[0] if same else folder / f"{digest}_{stem}{ext}"
     if not target.exists():
         target.write_bytes(data)
@@ -558,24 +639,7 @@ def store_upload(kit: Path, form_id: str, where: str, name: str, data: bytes, *,
 
 
 def unpack_artwork(out: Path, kit: Path, data: bytes, *, artwork_only: bool) -> list[dict]:
-    files = []
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        entries = [m for m in archive.infolist() if not m.is_dir()
-                   and not Path(m.filename).name.startswith(".") and "__MACOSX" not in m.filename]
-        members = [m for m in entries if Path(m.filename).suffix.lower() in FROM_ZIP]
-        if artwork_only and len(members) != len(entries):
-            return []
-        if len(members) > MAX_MEMBERS or sum(m.file_size for m in members) > MAX_UNZIPPED:
-            raise ValueError("File ZIP quá lớn.")
-        for member in members:
-            rel = [slug(Path(p).stem) if i == len(Path(member.filename).parts) - 1 else slug(p)
-                   for i, p in enumerate(Path(member.filename).parts)]
-            target = out.joinpath(*rel[:-1], rel[-1] + Path(member.filename).suffix.lower())
-            target.parent.mkdir(parents=True, exist_ok=True)
-            if not target.exists():
-                target.write_bytes(archive.read(member))
-            files.append({"path": target.relative_to(kit).as_posix(), "name": member.filename})
-    return files
+    return archives.unpack(out, kit, data, artwork_only=artwork_only)
 
 
 # ---------- server ----------
@@ -588,6 +652,13 @@ class FormServer(ThreadingHTTPServer):
         self.kit, self.form, self.out, self.prefill = kit, form, out, prefill
         self.result = None
         self.done = threading.Event()
+        self.lock = threading.RLock()
+        self.cancelled = False
+
+
+def draft_path(kit: Path, out: Path) -> Path:
+    key = hashlib.sha256(str(out.resolve()).encode()).hexdigest()[:20]
+    return kit / ".gui/drafts" / f"{key}.json"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -612,8 +683,11 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             self.send(200, (FORMS / "form.html").read_bytes(), "text/html; charset=utf-8")
         elif url.path == "/spec":
+            draft = draft_path(self.server.kit, self.server.out)
             self.send_json(200, {"form": self.server.form, "context": build_context(self.server.kit),
-                                 "prefill": self.server.prefill})
+                                 "prefill": self.server.prefill, "draft_key": str(self.server.out.resolve()),
+                                 "draft_updated": draft.stat().st_mtime * 1000 if draft.exists() else 0,
+                                 "last_submitted": self.server.out.stat().st_mtime * 1000 if self.server.out.exists() else 0})
         elif url.path == "/kitfile":
             rel = (parse_qs(url.query).get("p") or [""])[0]
             kit = self.server.kit.resolve()
@@ -627,6 +701,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
+        origin = self.headers.get("Origin")
+        if origin and origin != f"http://127.0.0.1:{self.server.server_port}":
+            self.send_json(403, {"error": "Chỉ nhận thao tác từ form đang mở."})
+            return
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_FILE:
             self.send_json(413, {"error": "File quá lớn (tối đa 300 MB)."})
@@ -643,23 +721,46 @@ class Handler(BaseHTTPRequestHandler):
                                      (query.get("name") or ["file"])[0], data,
                                      reference=query.get("kind") == ["reference"], unpack=query.get("unpack") == ["1"])
                 self.send_json(200, {"files": files})
+            elif url.path == "/close":
+                with self.server.lock:
+                    if self.server.done.is_set():
+                        self.send_json(409, {"error": "Form đã kết thúc."})
+                        return
+                    self.server.cancelled = True
+                    self.send_json(200, {"ok": True, "draft_retained": True})
+                    self.server.done.set()
+            elif url.path == "/draft":
+                with self.server.lock:
+                    if self.server.done.is_set():
+                        self.send_json(409, {"error": "Form đã gửi, không ghi đè bằng nháp."})
+                        return
+                    answers = json.loads(data.decode("utf-8"))["answers"]
+                    workflow.write(draft_path(self.server.kit, self.server.out), {"answers": answers})
+                    self.server.prefill = answers
+                    self.send_json(200, {"ok": True, "draft": True})
             elif url.path == "/submit":
-                if self.server.done.is_set():
-                    self.send_json(409, {"error": "Form này đã được gửi."})
-                    return
-                answers = json.loads(data.decode("utf-8"))["answers"]
-                record = apply_answers(self.server.form["id"], self.server.kit, answers)
-                self.server.out.parent.mkdir(parents=True, exist_ok=True)
-                self.server.out.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
-                if "description_suggestions" in self.server.form:
-                    remember_kit(self.server.kit)
-                self.server.result = record
-                self.send_json(200, {"ok": True})
-                self.server.done.set()
+                with self.server.lock:
+                    self.submit_answers(data)
             else:
                 self.send_json(404, {"error": "not found"})
-        except (ValueError, KeyError, zipfile.BadZipFile) as exc:
+        except (ValueError, KeyError, OSError, zipfile.BadZipFile) as exc:
             self.send_json(400, {"error": str(exc)})
+
+    def submit_answers(self, data):
+        if self.server.done.is_set():
+            self.send_json(409, {"error": "Form này đã được gửi."})
+            return
+        answers = json.loads(data.decode("utf-8"))["answers"]
+        record = apply_answers(self.server.form["id"], self.server.kit, answers)
+        workflow.write(self.server.out, record)
+        draft_path(self.server.kit, self.server.out).unlink(missing_ok=True)
+        if self.server.form["id"] == "setup":
+            workflow.remember_project(self.server.kit)
+        if "description_suggestions" in self.server.form:
+            remember_kit(self.server.kit)
+        self.server.result = record
+        self.send_json(200, {"ok": True})
+        self.server.done.set()
 
 
 def wait_file(kit: Path) -> Path:
@@ -671,6 +772,9 @@ def serve(args, kit: Path) -> int:
     out = kit / args.out
     old = read_json(out, {}) or {}
     prefill = old.get("answers") or {}
+    draft = draft_path(kit, out)
+    if draft.exists() and (not out.exists() or draft.stat().st_mtime >= out.stat().st_mtime):
+        prefill = (read_json(draft, {}) or {}).get("answers") or prefill
     if args.form == "export":
         prefill.pop("photoshop", None)  # require an explicit choice on every export, even for one install
         source = "existing" if kit_layouts(kit) else "provided"
@@ -686,8 +790,8 @@ def serve(args, kit: Path) -> int:
             if entry["choice"] in labels:
                 entry["label"] = labels[entry["choice"]]
     if args.form == "revise" and args.kind == "concepts":
-        draft = form["questions"][0]["options"][0]
-        prefill.setdefault("versions", {"value": [{"choice": draft["value"], "label": draft["label"]}]})
+        drafts = form["questions"][0]["options"]
+        prefill.setdefault("versions", {"value": [{"choice": draft["value"], "label": draft["label"]} for draft in drafts]})
     for question in form["questions"]:
         if question.get("default_from") and question["id"] not in prefill:
             files = defaults_for(question["default_from"], kit)
@@ -697,7 +801,8 @@ def serve(args, kit: Path) -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     state = wait_file(kit)
     state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(json.dumps({"url": url, "out": args.out, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
+    state.write_text(json.dumps({"url": url, "out": args.out, "form": args.form, "kind": args.kind,
+                                "screens": args.screens, "pid": os.getpid(), "started": time.time()}), encoding="utf-8")
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     print(f"FORM_URL {url}", flush=True)
@@ -712,20 +817,21 @@ def serve(args, kit: Path) -> int:
     except KeyboardInterrupt:
         finished = False
     server.shutdown()
-    removed = clean_inputs(kit)
+    submitted = finished and not server.cancelled and server.result is not None
+    removed = clean_inputs(kit) if submitted else 0
     if args.child:
         info = read_json(state, {}) or {}
         if info.get("pid") != os.getpid():  # a newer form owns the state now
             return 0
-        info.update({"finished": True, "submitted": bool(finished), "removed_unused_files": removed})
+        info.update({"finished": True, "submitted": bool(submitted), "removed_unused_files": removed})
         state.write_text(json.dumps(info), encoding="utf-8")
     else:
         try:
             state.unlink()
         except OSError:
             pass
-    if not finished:
-        print(json.dumps({"status": "TIMEOUT", "message": "No answer before the timeout. Nothing was saved.",
+    if not submitted:
+        print(json.dumps({"status": "CANCELLED" if server.cancelled else "TIMEOUT", "message": "No submission. Draft and uploaded files were retained.",
                           "removed_unused_files": removed}, ensure_ascii=False), flush=True)
         return 4
     print(json.dumps({"status": "SUBMITTED", "out": args.out, "removed_unused_files": removed,
@@ -737,10 +843,31 @@ def start_detached(args, kit: Path) -> int:
     """Start the form server in the background and return once its URL is known."""
     state = wait_file(kit)
     old = read_json(state)
+    pending = workflow.pending_question(kit)
+    if pending:
+        print(json.dumps({"status": "WAITING_QUESTION", "question": pending,
+                          "message": "Chờ người dùng gửi câu trả lời trước khi mở form."}, ensure_ascii=False))
+        return 4
     if old and not old.get("finished") and old.get("pid"):
-        try:  # close a form left open, so it cannot overwrite this one's state
-            os.kill(int(old["pid"]), 15)
-        except (OSError, ValueError):
+        try:
+            if urlparse(old["url"]).hostname not in ("127.0.0.1", "localhost", "::1"):
+                raise ValueError("Invalid local form URL")
+            with urllib.request.urlopen(old["url"].rstrip("/") + "/spec", timeout=2) as response:
+                live = json.load(response)
+            same = (live["form"]["id"] == args.form and old.get("out") == args.out
+                    and old.get("kind", args.kind) == args.kind and old.get("screens", args.screens) == args.screens)
+            if not getattr(args, "replace", False):
+                print(f"FORM_URL {old['url']}", flush=True)
+                if not same:
+                    print(json.dumps({"status": "WAITING_FORM", "message": "Form hiện tại chưa gửi; giữ form và dữ liệu, không đóng để mở form khác."}, ensure_ascii=False))
+                    return 4
+                return 0
+            # Only an explicit user-requested replacement may close this server.
+            request = urllib.request.Request(old["url"].rstrip("/") + "/close", data=b"{}", method="POST")
+            with urllib.request.urlopen(request, timeout=2) as response:
+                json.load(response)
+            time.sleep(0.4)
+        except (OSError, ValueError, KeyError):
             pass
     if state.exists():
         state.unlink()
@@ -788,7 +915,7 @@ def wait_answers(args, kit: Path) -> int:
         return 4
     state.unlink()
     if not info.get("submitted"):
-        print(json.dumps({"status": "TIMEOUT", "message": "The form closed without an answer. Nothing was saved."}))
+        print(json.dumps({"status": "TIMEOUT", "message": "The form closed without a submission; the draft was retained."}))
         return 4
     print(json.dumps({"status": "SUBMITTED", "out": info["out"], "removed_unused_files": info.get("removed_unused_files", 0),
                       "record": read_json(out)}, ensure_ascii=False))
@@ -807,6 +934,7 @@ def main() -> int:
                         help="revise form: which images to offer")
     parser.add_argument("--screens", default="", help="Comma-separated screens to offer, or one concept image stem")
     parser.add_argument("--detach", action="store_true", help="Open the form and return at once, without waiting")
+    parser.add_argument("--replace", action="store_true", help="Only for an explicit user request: replace the open form, keeping its draft")
     parser.add_argument("--foreground", action="store_true", help="Serve in this process, for testing")
     parser.add_argument("--wait", action="store_true", help="Wait for the form started with --detach")
     parser.add_argument("--clean", action="store_true", help="Only delete unused files in inputs/")
@@ -825,9 +953,9 @@ def main() -> int:
         parser.error("form and --out are required")
     if not args.out.replace("\\", "/").startswith("briefs/"):
         parser.error("--out must be under briefs/")
-    if args.kind == "concepts" and (args.form != "revise" or len(PREVIEW["screens"]) != 1
-                                   or not kit_previews(kit, args.kind, PREVIEW["screens"])):
-        parser.error("--kind concepts requires the revise form and one existing concept image stem in --screens")
+    if args.kind == "concepts" and (args.form != "revise" or not PREVIEW["screens"]
+                                   or len(kit_previews(kit, args.kind, PREVIEW["screens"])) != len(set(PREVIEW["screens"]))):
+        parser.error("--kind concepts requires the revise form and existing concept image stems in --screens")
     kit.mkdir(parents=True, exist_ok=True)
     if args.foreground or args.child:
         return serve(args, kit)

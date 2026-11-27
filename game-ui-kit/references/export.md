@@ -5,7 +5,7 @@
 ## Start and collect only export information
 
 1. Resolve/create the kit and `.active` as `SKILL.md` describes. Start `state.py <kit> begin export`; record progress so `$info`, command switching, resume and `$reset` work for export-only sessions.
-2. Preserve chat attachments and prefill the form with `delivery.py add-source <kit> "<file>" [--screen <screen>]`. Repeat for several files. ZIP input is unpacked into `inputs/`; do not edit originals. The command only drafts the form; it is not submission or approval to use old saved output choices.
+2. Preserve chat attachments and prefill the form with `delivery.py add-source <kit> "<file>" [--screen <screen>]`. Repeat for several files. ZIP/RAR input is unpacked into `inputs/`; the existing form also accepts whole folders with descendants and retains grouping. Do not edit originals. The command only drafts the form; it is not submission or approval to use old saved output choices.
 3. Open `ask.py export <kit> --out briefs/export.json` every time and keep waiting for SUBMITTED. Existing layouts can be selected directly. Otherwise use supplied image files, each with an optional screen name and note. Ask no genre/gameplay questions. Reuse relevant notes and fonts already supplied.
 4. The form permits these five independent multi-select choices:
 
@@ -90,3 +90,5 @@ py -3 <skill>/scripts/delivery.py build ui_art/<kit>
 Use `--force` only when replacing the existing generated delivery was requested. The script builds the selected files in a staging directory before replacing `export/delivery/`. Missing layouts, stale/failed background checks, missing PSD verification or stale Unity data stop packaging. The delivery manifest is saved to `export/delivery_report.json`; `$info` reads it even without setup. Internal renders, scripts and QA reports stay in their working folders.
 
 Inspect the final selected files and assembled demo PNGs, report actual paths, screenshot fidelity, inference/missing-font/9-slice limits and total generated image count in Vietnamese. Never claim the art is verified from file existence or geometry alone. Mark export done only after delivering the requested outputs; do not ask the user to run another prerequisite command to continue.
+
+For configured projects, `delivery.py build` also copies selected UI demo PNGs into **Folder chứa demo chốt được xuất khi xuất file**, retaining screen/demo/version paths. Inspect `project_demo_sync` in the delivery report for destination failures. Follow [final-demo synchronization](prototype.md#final-exported-demos-and-folder-imports): use the one configured Figma file, update its separate final-export section, verify with the connector and mark hashes synced only afterward. Pending copy/remote work must be reported honestly and resumed without rebuilding successful selected outputs. Internal working sprites do not automatically add unselected formats.

@@ -1,5 +1,7 @@
 # Sprite fidelity, clean edges and material alpha
 
+**Exact reuse precedes restoration.** A clean approved component/master is pasted from its original pixels in later demos and revisions; do not regenerate, smooth or sharpen it for reuse. Native-size originals and their hashes are retained by [the internal master workflow](reuse.md). Restoration/reconstruction below applies only to missing/defective artwork in its authorized change scope, never automatically to unchanged approved art.
+
 Use for PNG production, reconstruction from flattened demos and repairs to an existing kit. Preserve approved designs and originals. An authorized repair reuses submitted export formats/layouts; it does not require reopening forms to reconfirm the same work.
 
 Respect the current repair scope. A request for one or two review samples does not authorize regenerating the kit or replacing approved components. A discussion or instruction-only skill update produces no new assets. When the user asks to review criteria or says to wait for a start signal, record the criteria and wait for that signal before dependent changes; do not add a new approval gate to otherwise authorized work.

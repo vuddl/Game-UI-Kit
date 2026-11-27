@@ -91,7 +91,7 @@ input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;b
 button{font:inherit;cursor:pointer;border-radius:8px}
 .x{border:0;background:transparent;color:var(--muted);font-size:18px;padding:4px 8px}
 .x:hover{color:var(--danger)}
-.add{border:1px solid var(--line);background:transparent;color:var(--accent);padding:6px 12px;align-self:flex-start}
+.add,.folder-add{border:1px solid var(--line);background:transparent;color:var(--accent);padding:6px 12px;align-self:flex-start}
 .custom{border:1px solid var(--line);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px}
 .custom .top{display:flex;gap:8px;align-items:center}
 .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -334,7 +334,32 @@ function pasteFiles(target, send){
   });
 }
 
-/* Files: a list of {path, name, note, ...}. Artwork inputs also unpack supported assets from ZIP. */
+async function droppedFiles(transfer){
+  // Capture entries while the drop event is active; readEntries returns chunks, not all files.
+  const entries = [...(transfer.items || [])].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+  const fallback = [...transfer.files];
+  if (!entries.length) return fallback;
+  const files = [];
+  async function walk(entry, prefix = ""){
+    if (files.length >= 3000) throw new Error("Folder quá lớn: tối đa 3000 file mỗi lượt.");
+    if (entry.isFile){
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      file.relativeSourcePath = prefix + entry.name;
+      files.push(file);
+    } else if (entry.isDirectory){
+      const reader = entry.createReader();
+      while (true){
+        const chunk = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        if (!chunk.length) break;
+        for (const child of chunk) await walk(child, prefix + entry.name + "/");
+      }
+    }
+  }
+  for (const entry of entries) await walk(entry);
+  return files;
+}
+
+/* Keep the existing picker, thumbnails and per-file fields; also accept RAR and folders. */
 function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpack, allowLinks,
   compact = false, description = false, imagesOnly = false} = {}){
   const defs = fieldDefs || NOTE_FIELD;
@@ -342,7 +367,11 @@ function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpac
   const listBox = el("div", {class: description ? "description-attachments" : "files"});
   const linksBox = allowLinks ? el("div", {class: "files"}) : null;
   const picker = el("input", {type: "file", multiple: true, class: "hidden",
-    accept: imagesOnly ? ".png,.jpg,.jpeg,.webp,.gif" : (assets ? ".png,.jpg,.jpeg,.webp,.psd,.zip" : undefined)});
+    accept: imagesOnly ? ".png,.jpg,.jpeg,.webp,.gif,.zip,.rar" : (assets ? ".png,.jpg,.jpeg,.webp,.psd,.zip,.rar" : undefined)});
+  const folderPicker = el("input", {type: "file", multiple: true, webkitdirectory: true, directory: true, class: "hidden"});
+  const report = el("div", {class: "hint", role: "status"});
+  const folderButton = el("button", {type: "button", class: "folder-add", "aria-label": "Chọn folder" + (label ? " cho " + label : ""),
+    onclick: () => folderPicker.click()}, "+ Chọn folder");
   const action = imagesOnly ? "Thêm ảnh" : "Thêm ảnh hoặc tệp";
   const addLabel = description && !imagesOnly && label?.startsWith("Thêm ") ? label
     : label ? `${action} cho ${label}` : action;
@@ -354,7 +383,7 @@ function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpac
     "aria-label": addLabel},
     el("strong", {text: compact ? "+ " + action : (label || action)}),
     compact ? null : el("div", {}, hint || "Kéo thả tệp vào đây hoặc bấm để chọn.",
-      el("div", {class: "hint", text: "Bạn cũng có thể dán bằng Ctrl+V."})));
+      el("div", {class: "hint", text: "Nhận ZIP/RAR; kéo cả folder (gồm thư mục con), hoặc dán bằng Ctrl+V."})));
   function draw(){
     const files = [];
     const links = [];
@@ -383,36 +412,51 @@ function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpac
     if (linksBox) linksBox.replaceChildren(...links);
   }
   async function send(files){
+    const skipped = [];
+    files = files.filter(file => {
+      if ((file.webkitRelativePath || file.relativeSourcePath) && !/\.(png|jpe?g|webp|psd|zip|rar)$/i.test(file.name)){
+        skipped.push(file.webkitRelativePath || file.relativeSourcePath); return false;
+      }
+      return true;
+    });
     if (imagesOnly){
-      const images = files.filter(file => IMG.test(file.name));
-      if (images.length !== files.length) alert("Mô tả liên kết nhận ảnh PNG, JPG, WebP hoặc GIF.");
+      const images = files.filter(file => IMG.test(file.name) || /\.(zip|rar)$/i.test(file.name));
+      skipped.push(...files.filter(file => !images.includes(file)).map(file => file.name));
       files = images;
     }
-    if (!files.length) return;
+    if (!files.length){ report.textContent = skipped.length ? "Bỏ qua file không hỗ trợ: " + skipped.join(", ") : "Không có file được hỗ trợ."; return; }
+    if (files.length > 3000){ report.textContent = "Tối đa 3000 file mỗi lượt."; return; }
+    let received = 0;
     UPLOADS++; refresh();
     try {
       for (const file of files){
         status("Đang tải " + file.name + "…");
         try {
-          const query = new URLSearchParams({where, name: file.name});
+          const query = new URLSearchParams({where, name: file.webkitRelativePath || file.relativeSourcePath || file.name});
           if (!assets) query.set("kind", "reference");
-          if (unpack) query.set("unpack", "1");
+          if (unpack || /\.rar$/i.test(file.name) || (imagesOnly && /\.zip$/i.test(file.name))) query.set("unpack", "1");
           const r = await fetch("/upload?" + query, {method: "POST", body: file});
           const data = await r.json();
           if (!r.ok) throw new Error(data.error || r.statusText);
-          for (const f of data.files) if (!list.some(x => x.path === f.path)) list.push({path: f.path, name: f.name, note: ""});
+          for (const f of data.files){
+            if (f.archive_skipped) skipped.push(...f.archive_skipped);
+            if (imagesOnly && !IMG.test(f.path)){ skipped.push(f.name); continue; }
+            if (!list.some(x => x.path === f.path)){ list.push({path: f.path, name: f.name, note: ""}); received++; }
+          }
         } catch (e){ alert("Không tải được " + file.name + ": " + e.message); }
       }
       if (box.isConnected) draw(); else rerender();
     } finally {
       UPLOADS--;
       if (!UPLOADS) status("");
+      report.textContent = `Đã nhận ${received} file.` + (skipped.length ? " Bỏ qua file không hỗ trợ: " + skipped.join(", ") : "");
       refresh();
     }
   }
   pasteFiles(box, send);
   if (target && !description) pasteFiles(target, send);
   picker.addEventListener("change", () => { send([...picker.files]); picker.value = ""; });
+  folderPicker.addEventListener("change", () => { send([...folderPicker.files]); folderPicker.value = ""; });
   drop.addEventListener("click", () => picker.click());
   function allowDrop(node){
     node.addEventListener("dragover", e => {
@@ -420,9 +464,13 @@ function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpac
       e.preventDefault(); drop.classList.add("over");
     });
     node.addEventListener("dragleave", () => drop.classList.remove("over"));
-    node.addEventListener("drop", e => {
-      if (e.defaultPrevented || !e.dataTransfer.files.length) return;
-      e.preventDefault(); drop.classList.remove("over"); send([...e.dataTransfer.files]);
+    node.addEventListener("drop", async e => {
+      if (e.defaultPrevented || !e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault(); drop.classList.remove("over");
+      UPLOADS++; refresh();
+      try { await send(await droppedFiles(e.dataTransfer)); }
+      catch (error){ report.textContent = "Không đọc được folder: " + error.message; }
+      finally { UPLOADS--; refresh(); }
     });
   }
   allowDrop(box);
@@ -430,7 +478,7 @@ function filesWidget(list, where, {hint, fieldDefs, label, target, assets, unpac
   draw();
   box.append(listBox);
   if (description) box.append(target);
-  box.append(drop, picker);
+  box.append(drop, picker, folderButton, folderPicker, report);
   if (!linksBox) return box;
   const addLink = el("button", {class: "add", type: "button", onclick: () => {
     list.push({url: "", note: ""});
@@ -548,6 +596,10 @@ function renderQuestion(q){
 
   if (q.type === "single" || q.type === "multi"){
     const multi = q.type === "multi";
+    if (!multi && state.value === undefined && q.default){
+      const preset = q.options.find(o => o.value === q.default);
+      if (preset) state.value = {choice: preset.value, label: preset.label};
+    }
     if (multi && !Array.isArray(state.value)) state.value = [];
     const opts = el("div", {class: "opts"});
     let group = null;
@@ -607,9 +659,12 @@ function renderQuestion(q){
     body.append(opts);
   } else if (q.type === "text"){
     if (state.value === undefined) state.value = "";
-    const input = descriptionInput(state.value, v => { state.value = v; },
-      {...q, multiline: true, placeholder: q.placeholder || "Câu trả lời"});
-    body.append(questionField(q, state, input));
+    const input = q.plain_text
+      ? textInput(state.value, v => { state.value = v; }, {placeholder: q.placeholder || "Dán đường dẫn hoặc liên kết"})
+      : descriptionInput(state.value, v => { state.value = v; },
+          {...q, multiline: true, placeholder: q.placeholder || "Câu trả lời"});
+    if (q.plain_text) input.setAttribute("aria-label", q.title);
+    body.append(q.plain_text ? input : questionField(q, state, input));
   } else if (q.type === "number"){
     if (state.value === undefined || state.value === null) state.value = q.default ?? null;
     const input = textInput(state.value, v => { state.value = v; }, {number: true, min: q.min, max: q.max});
@@ -650,14 +705,36 @@ function questionField(q, state, input){
 }
 
 let sendBtn, statusBox;
+let draftKey, draftTimer, draftReady = false, submitted = false, draftQueue = Promise.resolve();
+function saveDraft(){
+  if (!draftReady || submitted || !draftKey) return;
+  const answers = JSON.parse(JSON.stringify(VALUES));
+  try { localStorage.setItem(draftKey, JSON.stringify({answers, updated: Date.now()})); } catch (_) {}
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    draftQueue = draftQueue.catch(() => {}).then(async () => {
+      if (submitted) return;
+      const response = await fetch("/draft", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({answers})});
+      if (!response.ok) throw new Error("Không lưu được nháp lên server; bản local vẫn được giữ.");
+    }).catch(error => status(error.message));
+  }, 250);
+}
+document.addEventListener("input", saveDraft);
+window.addEventListener("pagehide", () => {
+  if (!submitted && draftReady){
+    saveDraft();
+    navigator.sendBeacon?.("/draft", new Blob([JSON.stringify({answers: VALUES})], {type: "application/json"}));
+  }
+});
 function status(text){ if (statusBox) statusBox.textContent = text; }
-function refresh(){ if (sendBtn) sendBtn.disabled = UPLOADS > 0 || PREFLIGHTS > 0; }
+function refresh(){ if (sendBtn) sendBtn.disabled = UPLOADS > 0 || PREFLIGHTS > 0; saveDraft(); }
 
 function rerender(){
   const y = window.scrollY;
   const box = document.getElementById("questions");
   box.replaceChildren(...SPEC.questions.filter(isShown).map(renderQuestion));
   window.scrollTo(0, y);
+  saveDraft();
 }
 
 function problem(q){
@@ -725,6 +802,8 @@ async function submit(){
     const r = await fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: payload});
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
+    submitted = true; clearTimeout(draftTimer);
+    try { localStorage.removeItem(draftKey); } catch (_) {}
     const timer = el("p", {class: "hint", role: "timer", text: "Tab sẽ tự đóng sau 5 giây."});
     app.replaceChildren(el("div", {class: "card done"}, el("h2", {text: "Đã gửi"}),
       el("p", {class: "intro", text: "Codex sẽ tự làm tiếp."}), timer,
@@ -748,6 +827,13 @@ async function submit(){
     const data = await r.json();
     SPEC = data.form; CTX = data.context || {};
     for (const [k, v] of Object.entries(data.prefill || {})) VALUES[k] = JSON.parse(JSON.stringify(v));
+    draftKey = "game-ui-kit:draft:" + data.draft_key;
+    try {
+      const local = JSON.parse(localStorage.getItem(draftKey) || "null");
+      if (local && local.updated > Math.max(data.draft_updated || 0, data.last_submitted || 0)){
+        for (const [k, v] of Object.entries(local.answers || {})) VALUES[k] = v;
+      }
+    } catch (_) {}
     for (const q of SPEC.questions) if (q.fixed_value) VALUES[q.id] = {value: {...q.fixed_value}};
   } catch (e){ app.replaceChildren(el("div", {class: "card", text: "Không tải được form: " + e.message})); return; }
   document.title = SPEC.title;
@@ -759,6 +845,7 @@ async function submit(){
     el("div", {id: "questions"}),
     el("div", {class: "bar"}, sendBtn, statusBox));
   rerender();
+  draftReady = true;
 })();
 </script>
 </body>
